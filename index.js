@@ -7,11 +7,112 @@ const logger = require("firebase-functions/logger");
 const { onDocumentCreated } = require("firebase-functions/v2/firestore");
 const { onDocumentDeleted } = require("firebase-functions/v2/firestore");
 const { onDocumentUpdated } = require("firebase-functions/v2/firestore");
+const pointInPolygon = require('point-in-polygon');
 
+/**
+ * Init Firestore Admin
+ */
 const apiKey='AIzaSyDLxCPZqwC3qo61Sv0EsCNKpRf3Oj0IzSk';
 
 const admin = require('firebase-admin');
 admin.initializeApp();
+
+/**
+ * Constants paths for collections Names
+ */
+const CUSTOMERS_COLLECTION_NAME = 'customers';
+const ZONE_COLLECTION_NAME = 'zone';
+
+/**
+ * Update zones for all customers
+ */
+exports.updateZoneForCustomers = onRequest(async (request, response) => {
+    try {
+        let responseMessage = '';
+        //Get Map Polygon from Zones
+        const refZones = admin.firestore().collection(ZONE_COLLECTION_NAME);
+        const zonesSnapshot = await refZones.get();
+        if (zonesSnapshot.empty) {
+            let responseMessage = 'No matching documents in Zones.';
+            console.log(responseMessage);
+            response.status(200).send(responseMessage);
+        }
+        let zones = [];
+        zonesSnapshot.forEach(zoneData => {
+            zones.push(zoneData.data());
+        });
+        polygonZones = getPolygonMapByZones(zones);
+        //Get All Customer
+        const refCustomers = admin.firestore().collection(CUSTOMERS_COLLECTION_NAME);
+        const customerSnapshot = await refCustomers.get();
+        if (customerSnapshot.empty) {
+            responseMessage = 'No matching documents in Customers.';
+            response.status(200).send(responseMessage);
+        }
+        let customers = [];
+        customerSnapshot.forEach(customerData => {
+            customers.push(customerData.data());
+        });
+        //Update Zones
+        customers.map(customer => {
+            updateZoneForCustomer(customer, polygonZones);
+        });
+        responseMessage = 'Clientes actualizados correctamente';
+        response.status(200).send(responseMessage);
+    } catch (e) {
+        console.log('Error: ', e);
+    }
+});
+
+/**
+ * Update Zone for Customer
+ */
+function updateZoneForCustomer(customer, polygonZones) {
+    for (var i = 0; i < polygonZones.length; i++) {
+        if(verifyZone([customer.address.address1.lat, customer.address.address1.lon], polygonZones[i].points)) {
+            customer.zone = polygonZones[i].zonePosition;
+            saveCustomer(customer);
+            break;
+        } 
+    }
+    return customer;
+}
+
+/**
+ * Save Customer in database 
+ * @param {any} customer element customer of database
+ */
+function saveCustomer(customer) {
+    admin.firestore().collection(CUSTOMERS_COLLECTION_NAME).doc(customer.id).set(customer);
+}
+
+/**
+ * Verify Zone for Customer
+ * @param {array} customerCoords array [lat, lon]
+ * @param {array} zonePolygon array [[lat, lon],[...],...]
+ */
+function verifyZone(customerCoords, zonePolygon) {
+    return pointInPolygon(customerCoords, zonePolygon);
+}
+
+/**
+ * Get Polygon Map By Zone or all Zones
+ * @param {Array} zones array of zones
+ * @return {Array} return array of polygon zones
+ */
+function getPolygonMapByZones(zones) {
+    let result = [];
+    if(zones.length == 0) {
+        return result;
+    }
+    result = zones.map(zone => {
+        return {
+            zonePosition : zone.position,
+            points : zone.polygon.map(polygonPoint => [polygonPoint.lat, polygonPoint.lon])
+        };
+    });
+    return result;
+}
 
 function obtenerCoordenadas(direccion, ciudad, pais) {
     
