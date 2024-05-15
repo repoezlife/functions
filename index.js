@@ -143,32 +143,6 @@ function getPolygonMapByZones(zones) {
     return result;
 }
 
-
-async function obtenerCoordenadas(direccion, ciudad, pais) {
-    
-    const direccionCompleta = `${direccion}, ${ciudad}, ${pais}`;
-    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(direccionCompleta)}&key=${apiKey}`;
-
-    fetch(url)
-        .then(response => response.json())
-        .then(data => {
-            // Verificar si se obtuvieron resultados de geocodificación
-            if (data.status === 'OK' && data.results.length > 0) {
-                const resultado = data.results[0];
-                const coordenadas = resultado.geometry.location;
-                const latitud = coordenadas.lat;
-                const longitud = coordenadas.lng;
-                return [latitud, longitud];
-            } else {
-                console.error('No se pudo obtener la geocodificación para la dirección proporcionada.');
-                return [0 , 0];
-            }
-        })
-        .catch(error => {
-            console.error('Hubo un error al obtener las coordenadas:', error);
-        });
-}
-
 function formatoFecha() {
     const fecha = new Date();
     const zonaHoraria = 'America/Bogota';
@@ -670,3 +644,131 @@ exports.updatePay = onDocumentUpdated("/payments/{idPay}", (event) => {
     }
 
 });
+
+exports.insertCustomers = onRequest(async (request, response) => {
+    try {
+        // Leer el archivo JSON con los documentos
+        const jsonData = fs.readFileSync('./customers.json');
+        const data = JSON.parse(jsonData);
+
+        // Obtener una referencia a la colección en Firestore donde deseas insertar los documentos
+        const collectionRef = admin.firestore().collection('customers');
+
+        // Procesar los documentos y agregarlos a la colección
+        const batch = admin.firestore().batch();
+        data.forEach(doc => {
+
+            if(doc.comportamientoCredito =="Renovable"){
+
+                const docRef = collectionRef.doc(doc.id); // 
+                const reference = doc.reference || " ";
+                const maxCupo=((doc.maxCupo)*1) || 15;
+                const addrss= await funAdrress(doc.address2);
+                const addrss2= doc.addressHouse || null;
+
+                const restructuredData = {
+                    id: doc.id,
+                    address:{
+                        address1:{
+                            address:addrss[0],
+                            lat:(+addrss[1]*1),
+                            lon:(+addrss[2]*1),
+                            neighborhood:addrss[3],
+                            freeReference:addrss[4]
+                        },
+                        address2:{
+                            address:addrss2,
+                            lat:null,
+                            lon:null,
+                            neighborhood:null,
+                            freeReference:null
+                        }
+                    },
+                    behavior: "renewable",
+                    birthday:null,
+                    cell:{
+                        cell1:doc.cell,
+                        cell2:null
+                    },
+                    document:doc.id,
+                    documentType:"CC",
+                    email:null,
+                    name:{
+                        lastName:doc.lastName,
+                        name:doc.name
+                    },
+                    creditsTime:{
+                        initial:30,
+                        intermediate:60,
+                        maximun:180,
+                        state:2
+                    },
+                    quotas:{
+                        initial:0,
+                        intermediate:0,
+                        maximun:15,
+                        state:2
+                    },
+                    reference:reference,
+                    state:"accepted",
+                    refuseReason:null,
+                    visitApply:false,
+                    zone:null,
+                    date:"01-01-2000",
+                    lastFinishedCreditDate:null,
+                    activeCredits:0
+                };
+                batch.set(docRef, restructuredData);
+
+            }
+            
+        });
+        // Commit de la transacción en lotes
+        return batch.commit()
+            .then(() => {
+                res.status(200).send('Documentos insertados correctamente en Firestore.');
+            })
+            .catch(error => {
+                console.error('Error al insertar documentos en Firestore:', error);
+                res.status(500).send('Error al insertar documentos en Firestore.');
+            });
+    } catch (error) {
+        console.error('Error al leer el archivo JSON:', error);
+        res.status(500).send('Error al leer el archivo JSON.');
+    }
+});
+
+async function funAdrress(cadena) {
+    const partes = cadena.split(",");
+    const address=partes[0] || "Cra. 10, Cl. 15 Nte. #59";
+    const neighborhood= partes[1] || "NA";
+    const freeReference= partes[2] || "NA"; 
+    
+    try {
+        const coordenadas = await obtenerCoordenadas(address, "Popayán, Cauca", "Colombia");
+        return [address, coordenadas[0], coordenadas[1], neighborhood, freeReference];
+    } catch (error) {
+        console.error('Error al obtener coordenadas:', error);
+        return [address, 0, 0, neighborhood, freeReference];
+    }
+}
+
+async function obtenerCoordenadas(direccion, ciudad, pais) {
+    const direccionCompleta = `${direccion}, ${ciudad}, ${pais}`;
+    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(direccionCompleta)}&key=${apiKey}`;
+
+    const response = await fetch(url);
+    const data = await response.json();
+
+    if (data.status === 'OK' && data.results.length > 0) {
+        const resultado = data.results[0];
+        const coordenadas = resultado.geometry.location;
+        const latitud = coordenadas.lat;
+        const longitud = coordenadas.lng;
+        return [latitud, longitud];
+    } else {
+        console.error('No se pudo obtener la geocodificación para la dirección proporcionada.');
+        return [0 , 0];
+    }
+}
+
