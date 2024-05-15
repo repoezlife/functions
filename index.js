@@ -24,8 +24,37 @@ const CUSTOMERS_COLLECTION_NAME = 'customers';
 const ZONE_COLLECTION_NAME = 'zone';
 
 /**
- * Update zones for all customers
+ * Crear Zona para un Cliente
+ * 
  */
+
+exports.getZone = onDocumentCreated("/customers/{id}", async (event) => {
+    const snapshot = event.data;
+    if (!snapshot) {
+        console.log("No data associated with the event");
+        return;
+    }
+    const customer = snapshot.data();
+    const refZones = admin.firestore().collection(ZONE_COLLECTION_NAME);
+        const zonesSnapshot = await refZones.get();
+        if (zonesSnapshot.empty) {
+            let responseMessage = 'No matching documents in Zones.';
+            console.log(responseMessage);
+            response.status(200).send(responseMessage);
+        }
+        let zones = [];
+        zonesSnapshot.forEach(zoneData => {
+            zones.push(zoneData.data());
+        });
+    polygonZones = getPolygonMapByZones(zones);
+    updateZoneForCustomer(customer, polygonZones);
+});
+
+/**
+ * Update zones for all customers
+ * 
+ */
+
 exports.updateZoneForCustomers = onRequest(async (request, response) => {
     try {
         let responseMessage = '';
@@ -114,7 +143,8 @@ function getPolygonMapByZones(zones) {
     return result;
 }
 
-function obtenerCoordenadas(direccion, ciudad, pais) {
+
+async function obtenerCoordenadas(direccion, ciudad, pais) {
     
     const direccionCompleta = `${direccion}, ${ciudad}, ${pais}`;
     const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(direccionCompleta)}&key=${apiKey}`;
@@ -128,9 +158,10 @@ function obtenerCoordenadas(direccion, ciudad, pais) {
                 const coordenadas = resultado.geometry.location;
                 const latitud = coordenadas.lat;
                 const longitud = coordenadas.lng;
-                console.log(`Las coordenadas de ${direccionCompleta} son: Latitud ${latitud}, Longitud ${longitud}`);
+                return [latitud, longitud];
             } else {
                 console.error('No se pudo obtener la geocodificación para la dirección proporcionada.');
+                return [0 , 0];
             }
         })
         .catch(error => {
@@ -253,7 +284,7 @@ exports.createPay = onDocumentCreated("/payments/{idPay}", (event) => {
     let numberFee =  data.numberFee; // Número de cuotas
     let type =  data.type; // tipo de abono (corrienre, capital, interes, etc)
     let paymentMedium = data.paymentMedium; // Medio de pago efectivo, nequi, 
-    let valueCommissionPaymentMedium= data.valueCommissionPaymentMedium;
+    let valueCommissionPaymentMedium= data.valueCommissionPaymentMedium;  
     
     let imageReferencePay = data.imageReferencePay; // referencia de donde quedo guardado el recibo
     let userName=data.userName; //  Nombre del usuario que esta realizando el cobro
