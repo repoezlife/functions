@@ -8,6 +8,7 @@ const { onDocumentCreated } = require("firebase-functions/v2/firestore");
 const { onDocumentDeleted } = require("firebase-functions/v2/firestore");
 const { onDocumentUpdated } = require("firebase-functions/v2/firestore");
 const pointInPolygon = require('point-in-polygon');
+const fs = require('fs');
 
 /**
  * Init Firestore Admin
@@ -15,6 +16,7 @@ const pointInPolygon = require('point-in-polygon');
 const apiKey='AIzaSyDLxCPZqwC3qo61Sv0EsCNKpRf3Oj0IzSk';
 
 const admin = require('firebase-admin');
+const { randomInt } = require("crypto");
 admin.initializeApp();
 
 /**
@@ -645,32 +647,49 @@ exports.updatePay = onDocumentUpdated("/payments/{idPay}", (event) => {
 
 });
 
+
+
 exports.insertCustomers = onRequest(async (request, response) => {
     try {
         // Leer el archivo JSON con los documentos
-        const jsonData = fs.readFileSync('./customers.json');
+        const jsonData = fs.readFileSync('customers.json', 'utf8');
         const data = JSON.parse(jsonData);
+     //   console.log(data);
+     const customerValues = Object.values(data);
 
         // Obtener una referencia a la colección en Firestore donde deseas insertar los documentos
         const collectionRef = admin.firestore().collection('customers');
 
         // Procesar los documentos y agregarlos a la colección
-        const batch = admin.firestore().batch();
-        data.forEach(doc => {
+        let batch = admin.firestore().batch();
+        const batchSize = 20; // Tamaño máximo de lote
+        const maxBatches = 300; // Límite máximo de lotes a insertar
+        let batchesInserted = 0; // Contador de lotes insertados
+        let cont = 0;
+        let cont2 = 0;
 
-            if(doc.comportamientoCredito =="Renovable"){
-
-                const docRef = collectionRef.doc(doc.id); // 
+        console.log("Tamaño Json: "+ customerValues.length); // 1920 rergistros
+        for (const doc of customerValues) {
+            cont=cont+1;
+            cont2=cont2+1;
+                                  
+            if(doc.comportamientoCredito === "Renovable"){ //433 soN No  Renovables
+                const idid= doc.id || "A_"+Math.floor(Math.random() * 100) + 1;
+                const ide=idid+"";
+                
+                const docRef = collectionRef.doc(ide); // 
                 const reference = doc.reference || " ";
-                const maxCupo=((doc.maxCupo)*1) || 15;
+                let maxCupo= doc.maxCupo || "15";
                 const addrss= await funAdrress(doc.address2);
                 const addrss2= doc.addressHouse || null;
+                maxCupo=Number(maxCupo);
+                console.log(cont2 +".  "+ide );
 
                 const restructuredData = {
                     id: doc.id,
                     address:{
                         address1:{
-                            address:addrss[0],
+                            address:addrss[0]+", "+addrss[3]+", "+addrss[4],
                             lat:(+addrss[1]*1),
                             lon:(+addrss[2]*1),
                             neighborhood:addrss[3],
@@ -697,16 +716,16 @@ exports.insertCustomers = onRequest(async (request, response) => {
                         lastName:doc.lastName,
                         name:doc.name
                     },
-                    creditsTime:{
+                    creditTime:{
                         initial:30,
                         intermediate:60,
-                        maximun:180,
+                        maximum:180,
                         state:2
                     },
                     quotas:{
                         initial:0,
                         intermediate:0,
-                        maximun:15,
+                        maximum:maxCupo,
                         state:2
                     },
                     reference:reference,
@@ -719,22 +738,60 @@ exports.insertCustomers = onRequest(async (request, response) => {
                     activeCredits:0
                 };
                 batch.set(docRef, restructuredData);
+               
+                if(cont >= 100){
+                    console.log('Ingreso al IF  cont=== 100');
+                    await batch.commit()
+                        .then(() => {
+                        console.log('Commit del lote exitoso');
+                        batch = admin.firestore().batch();
+                        cont=0;
 
+                    })
+                    .catch(error => {
+                        console.error('Error al hacer el commit del lote:', error);
+                    });
+                }
+
+                /* if (batch.size >= 9) {
+                    console.log('Ingreso al IF  >= 9');
+                    await batch.commit()
+                        .then(() => {
+                        console.log('Commit del lote exitoso');
+                        batch = admin.firestore().batch();
+                        batchesInserted++;
+
+                    })
+                    .catch(error => {
+                        console.error('Error al hacer el commit del lote:', error);
+                    });
+                } */
             }
             
-        });
-        // Commit de la transacción en lotes
-        return batch.commit()
+        }
+
+//        console.log("Tamaño batch  "+batch.operations.size);
+
+        if (cont > 0) {
+
+            console.log('Ingreso al IF  > 0');
+            await batch.commit()
             .then(() => {
-                res.status(200).send('Documentos insertados correctamente en Firestore.');
+                console.log('Commit del lote exitoso');
+                response.status(200).send('Documentos insertados correctamente en Firestore.');
+                cont=0;
+                batch = admin.firestore().batch();
             })
             .catch(error => {
-                console.error('Error al insertar documentos en Firestore:', error);
-                res.status(500).send('Error al insertar documentos en Firestore.');
+                console.error('Error al hacer el commit del lote:', error);
             });
+        
+        }
+       
+        
     } catch (error) {
         console.error('Error al leer el archivo JSON:', error);
-        res.status(500).send('Error al leer el archivo JSON.');
+        response.status(500).send('Error al leer el archivo JSON.');
     }
 });
 
@@ -770,5 +827,5 @@ async function obtenerCoordenadas(direccion, ciudad, pais) {
         console.error('No se pudo obtener la geocodificación para la dirección proporcionada.');
         return [0 , 0];
     }
+    
 }
-
