@@ -180,7 +180,7 @@ function formatoFecha2() {
     return formatoFechaModificado;
 }
 
-exports.reviewTask = onSchedule("every day 23:30", async (event) => {
+exports.reviewTasks = onSchedule("every day 23:30", async (event) => {
     let today= formatoFecha();
     let tomorrow= formatoFecha2();
     const refTasks= admin.firestore().collection("tasks").doc(today+"").collection("tasks");
@@ -223,6 +223,7 @@ exports.reviewTask = onSchedule("every day 23:30", async (event) => {
         }        
       });
   });
+  
   async function saveTask(dataT, id, date) {
     await admin.firestore().collection('tasks').doc(date).collection("tasks").doc(id).set(dataT).then(() => {
         console.log('Documento Creado exitosamente. ' + idN);
@@ -652,7 +653,7 @@ exports.updatePay = onDocumentUpdated("/payments/{idPay}", (event) => {
 exports.insertCustomers = onRequest(async (request, response) => {
     try {
         // Leer el archivo JSON con los documentos
-        const jsonData = fs.readFileSync('customers.json', 'utf8');
+        const jsonData = fs.readFileSync('customers3.json', 'utf8');
         const data = JSON.parse(jsonData);
      //   console.log(data);
      const customerValues = Object.values(data);
@@ -673,9 +674,10 @@ exports.insertCustomers = onRequest(async (request, response) => {
             cont=cont+1;
             cont2=cont2+1;
                                   
-            if(doc.comportamientoCredito === "Renovable"){ //433 soN No  Renovables
+          //  if(doc.comportamientoCredito === "Renovable"){ //433 soN No  Renovables
                 const idid= doc.id || "A_"+Math.floor(Math.random() * 100) + 1;
                 const ide=idid+"";
+                const cell=doc.cell+"";
                 
                 const docRef = collectionRef.doc(ide); // 
                 const reference = doc.reference || " ";
@@ -706,7 +708,7 @@ exports.insertCustomers = onRequest(async (request, response) => {
                     behavior: "renewable",
                     birthday:null,
                     cell:{
-                        cell1:doc.cell,
+                        cell1:cell,
                         cell2:null
                     },
                     document:doc.id,
@@ -739,8 +741,8 @@ exports.insertCustomers = onRequest(async (request, response) => {
                 };
                 batch.set(docRef, restructuredData);
                
-                if(cont >= 100){
-                    console.log('Ingreso al IF  cont=== 100');
+                if(cont >= 70){
+                    console.log('Ingreso al IF  cont=== 70');
                     await batch.commit()
                         .then(() => {
                         console.log('Commit del lote exitoso');
@@ -766,7 +768,7 @@ exports.insertCustomers = onRequest(async (request, response) => {
                         console.error('Error al hacer el commit del lote:', error);
                     });
                 } */
-            }
+           // }
             
         }
 
@@ -828,4 +830,140 @@ async function obtenerCoordenadas(direccion, ciudad, pais) {
         return [0 , 0];
     }
     
+}
+
+exports.insertCredits = onRequest(async (request, response) => {
+    try {
+        // Leer el archivo JSON con los documentos
+        const jsonData = fs.readFileSync('credits.json', 'utf8');
+        const data = JSON.parse(jsonData);
+     //   console.log(data);
+        const creditsValues = Object.values(data);
+
+        // Obtener una referencia a la colección en Firestore donde deseas insertar los documentos
+        const collectionRef = admin.firestore().collection('credits');
+
+        // Procesar los documentos y agregarlos a la colección
+        let batch = admin.firestore().batch();
+        const batchSize = 20; // Tamaño máximo de lote
+        const maxBatches = 300; // Límite máximo de lotes a insertar
+        let batchesInserted = 0; // Contador de lotes insertados
+        let cont = 0;
+        let cont2 = 0;
+
+        console.log("Tamaño Json: "+ creditsValues.length); //  registros
+        for (const doc of creditsValues) {
+            cont=cont+1;
+            cont2=cont2+1;
+                                  
+                const idC= doc.idCredit || "A_"+Math.floor(Math.random() * 100) + 1;
+                const idCredit=idC+"";
+                const cell=doc.cell+"";                
+                const docRef = collectionRef.doc(idCredit); // 
+                const timeCredit= parteEntera(doc.time);
+                const wayPay =calculateWayPay(timeCredit, Number(doc.numberFee));
+                const idTask =idCredit+"A_"+Math.floor(Math.random() * 100) + 1;
+                
+                const restructuredData = {
+                    id: idCredit,
+                    balance:Number(doc.balance),
+                    by:"RealTime",
+                    idUser:"AAAAA",
+                    capitalToPay:Number(doc.capitaltoPay),
+                    creditStatus:"active",
+                    commissions:0,
+                    changeDatePay:null,
+                    date:"01-01-2000",
+                    nextPay:doc.nextPay,
+                    numberFee:Number(doc.numberFee),
+                    percentage:Number(doc.percentage),
+                    timeCredit: timeCredit,
+                    totalPay:Number(doc.totalPay),
+                    utilityCredit:Number(doc.utilityCredit),
+                    utilityToPay:Number(doc.utilityToPay),
+                    utilityPartial:Number(doc.utilityPartial),
+                    value:Number(doc.value),
+                    valueFee:Number(doc.valueFee),
+                    imageReference:null,
+                    wayPay:wayPay,
+                    name:doc.name,
+                    lastName:"",
+                    cellphone:cell,
+                    address:doc.address,
+                    lat:doc.lat,
+                    lon:doc.lon,
+                    neighborhood:doc.neighborhood,
+                    addressFreeReference:doc.addressFreeReference,
+                    customerId:doc.customer+"",
+                    refusesToSign:true,
+                    creditCommissionPaymentMedium:0,
+                    zone:doc.zone,
+                    dateLastPay:null,
+                    idTask:idTask,
+                    toDayUntil:null,
+                    receiptPrintedAmount:0
+
+                };
+                batch.set(docRef, restructuredData);
+                               
+                if(cont >= 70){
+                    console.log('Ingreso al IF  cont=== 70');
+                    await batch.commit()
+                        .then(() => {
+                        console.log('Commit del lote exitoso');
+                        batch = admin.firestore().batch();
+                        cont=0;
+
+                    })
+                    .catch(error => {
+                        console.error('Error al hacer el commit del lote:', error);
+                    });
+                }            
+        }
+
+        if (cont > 0) {
+
+            console.log('Ingreso al IF  > 0');
+            await batch.commit()
+            .then(() => {
+                console.log('Commit del lote exitoso');
+                response.status(200).send('Documentos insertados correctamente en Firestore.');
+                cont=0;
+                batch = admin.firestore().batch();
+            })
+            .catch(error => {
+                console.error('Error al hacer el commit del lote:', error);
+            });
+        
+        }
+       
+        
+    } catch (error) {
+        console.error('Error al leer el archivo JSON:', error);
+        response.status(500).send('Error al leer el archivo JSON.');
+    }
+});
+
+function parteEntera(cadena) {
+    const resultado = cadena.match(/\d+/); // Extrae la parte numérica
+    const jj = resultado ? parseInt(resultado[0], 10) : null; // Convierte a entero y devuelve, o null si no encuentra un número
+    if(jj === null){
+        return 30;
+    }
+    return  (jj * 30);
+}
+
+function calculateWayPay(dias, cuotas) {
+    const meses=dias/30;
+    const factor =meses/cuotas;
+    switch (factor){
+        case 0.25:
+            return "weekly";
+        case 0.5:
+            return "biweekly";
+        case 1:
+            return "monthly";
+        default:
+            return "monthly";
+    }
 }
