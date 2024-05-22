@@ -179,8 +179,11 @@ function formatoFecha2() {
     const formatoFechaModificado = `${dia}-${mes}-${anio}`;   
     return formatoFechaModificado;
 }
+exports.distributeTasks = onSchedule("every day 23:30", async (event) => {
+    
 
-exports.reviewTasks = onSchedule("every day 23:30", async (event) => {
+});
+exports.reviewTasks = onSchedule("every day 23:00", async (event) => {
     let today= formatoFecha();
     let tomorrow= formatoFecha2();
     const refTasks= admin.firestore().collection("tasks").doc(today+"").collection("tasks");
@@ -223,7 +226,7 @@ exports.reviewTasks = onSchedule("every day 23:30", async (event) => {
         }        
       });
   });
-  
+
   async function saveTask(dataT, id, date) {
     await admin.firestore().collection('tasks').doc(date).collection("tasks").doc(id).set(dataT).then(() => {
         console.log('Documento Creado exitosamente. ' + idN);
@@ -320,19 +323,26 @@ console.log(" Llamado Funcióncon Type:  "+type +"  valor CreditCommissionPayMed
         switch(type){
             case "ordinary":
                 if(capitalToPay>0){    
+
                     if(capitalToPay>valuePay){
+                        console.log("capitalToPay menor a valuePay "+valuePay +" < "+capitalToPay);
                         capitalToPay=capitalToPay-valuePay;
                         capitalPart=valuePay;
                         utilityPart=0;
                     }
                     else{
-                        capitalPart=valuePay-capitalToPay;
+                        console.log("capitalToPay menor a valuePay "+valuePay +"> "+capitalToPay);
+                        capitalPart=capitalToPay;
                         utilityPart=valuePay-capitalPart;
-                        capitalToPay=capitalToPay-capitalPart;
+
+                        console.log("capitalPart "+capitalPart +" utilityPart "+utilityPart);
+                        //capitalToPay=capitalToPay-capitalPart;
+                        capitalToPay=0;
                         utilityPartial=utilityPartial+utilityPart;
                     }
                 }
                 else{
+                    console.log("capitalToPay menor a o igual a cero ");
                     utilityPartial=utilityPartial+valuePay;             
                     capitalPart=0;
                     utilityPart=valuePay;
