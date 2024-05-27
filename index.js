@@ -42,13 +42,13 @@ exports.getZone = onDocumentCreated("/customers/{id}", async (event) => {
         if (zonesSnapshot.empty) {
             let responseMessage = 'No matching documents in Zones.';
             console.log(responseMessage);
-            response.status(200).send(responseMessage);
         }
         let zones = [];
         zonesSnapshot.forEach(zoneData => {
             zones.push(zoneData.data());
         });
     polygonZones = getPolygonMapByZones(zones);
+    console.log(customer);
     updateZoneForCustomer(customer, polygonZones);
 });
 
@@ -57,16 +57,18 @@ exports.getZone = onDocumentCreated("/customers/{id}", async (event) => {
  * 
  */
 
-exports.updateZoneForCustomers = onRequest(async (request, response) => {
+exports.updateZoneForCustomers = onRequest({ cors: true }, async (request, response) => {
     try {
-        let responseMessage = '';
+        let responseMessage = {
+            result: 'Resultado de la operación',
+        };
         //Get Map Polygon from Zones
         const refZones = admin.firestore().collection(ZONE_COLLECTION_NAME);
         const zonesSnapshot = await refZones.get();
         if (zonesSnapshot.empty) {
-            let responseMessage = 'No matching documents in Zones.';
+            responseMessage.result = 'No matching documents in Zones.';
             console.log(responseMessage);
-            response.status(200).send(responseMessage);
+            response.status(200).send(JSON.stringify(responseMessage));
         }
         let zones = [];
         zonesSnapshot.forEach(zoneData => {
@@ -77,19 +79,20 @@ exports.updateZoneForCustomers = onRequest(async (request, response) => {
         const refCustomers = admin.firestore().collection(CUSTOMERS_COLLECTION_NAME);
         const customerSnapshot = await refCustomers.get();
         if (customerSnapshot.empty) {
-            responseMessage = 'No matching documents in Customers.';
-            response.status(200).send(responseMessage);
+            responseMessage.result = 'No matching documents in Customers.';
+            response.status(200).send(JSON.stringify(responseMessage));
         }
         let customers = [];
         customerSnapshot.forEach(customerData => {
             customers.push(customerData.data());
         });
         //Update Zones
+        console.log(customers.length);
         customers.map(customer => {
             updateZoneForCustomer(customer, polygonZones);
         });
-        responseMessage = 'Clientes actualizados correctamente';
-        response.status(200).send(responseMessage);
+        responseMessage.result = "Operación iniciada sin errores";
+        response.status(200).send(JSON.stringify(responseMessage));
     } catch (e) {
         console.log('Error: ', e);
     }
@@ -102,11 +105,11 @@ function updateZoneForCustomer(customer, polygonZones) {
     for (var i = 0; i < polygonZones.length; i++) {
         if(verifyZone([customer.address.address1.lat, customer.address.address1.lon], polygonZones[i].points)) {
             customer.zone = polygonZones[i].zonePosition;
-            saveCustomer(customer);
-            break;
-        } 
+        } else {
+            customer.zone = 0;
+        }
+        saveCustomer(customer);
     }
-    return customer;
 }
 
 /**
@@ -139,7 +142,7 @@ function getPolygonMapByZones(zones) {
     result = zones.map(zone => {
         return {
             zonePosition : zone.position,
-            points : zone.polygon.map(polygonPoint => [polygonPoint.lat, polygonPoint.lon])
+            points : zone.polygon.map(polygonPoint => [polygonPoint.lat, polygonPoint.lng])
         };
     });
     return result;
