@@ -42,13 +42,13 @@ exports.getZone = onDocumentCreated("/customers/{id}", async (event) => {
         if (zonesSnapshot.empty) {
             let responseMessage = 'No matching documents in Zones.';
             console.log(responseMessage);
+            response.status(200).send(responseMessage);
         }
         let zones = [];
         zonesSnapshot.forEach(zoneData => {
             zones.push(zoneData.data());
         });
     polygonZones = getPolygonMapByZones(zones);
-    console.log(customer);
     updateZoneForCustomer(customer, polygonZones);
 });
 
@@ -57,18 +57,16 @@ exports.getZone = onDocumentCreated("/customers/{id}", async (event) => {
  * 
  */
 
-exports.updateZoneForCustomers = onRequest({ cors: true }, async (request, response) => {
+exports.updateZoneForCustomers = onRequest(async (request, response) => {
     try {
-        let responseMessage = {
-            result: 'Resultado de la operación',
-        };
+        let responseMessage = '';
         //Get Map Polygon from Zones
         const refZones = admin.firestore().collection(ZONE_COLLECTION_NAME);
         const zonesSnapshot = await refZones.get();
         if (zonesSnapshot.empty) {
-            responseMessage.result = 'No matching documents in Zones.';
+            let responseMessage = 'No matching documents in Zones.';
             console.log(responseMessage);
-            response.status(200).send(JSON.stringify(responseMessage));
+            response.status(200).send(responseMessage);
         }
         let zones = [];
         zonesSnapshot.forEach(zoneData => {
@@ -79,20 +77,19 @@ exports.updateZoneForCustomers = onRequest({ cors: true }, async (request, respo
         const refCustomers = admin.firestore().collection(CUSTOMERS_COLLECTION_NAME);
         const customerSnapshot = await refCustomers.get();
         if (customerSnapshot.empty) {
-            responseMessage.result = 'No matching documents in Customers.';
-            response.status(200).send(JSON.stringify(responseMessage));
+            responseMessage = 'No matching documents in Customers.';
+            response.status(200).send(responseMessage);
         }
         let customers = [];
         customerSnapshot.forEach(customerData => {
             customers.push(customerData.data());
         });
         //Update Zones
-        console.log(customers.length);
         customers.map(customer => {
             updateZoneForCustomer(customer, polygonZones);
         });
-        responseMessage.result = "Operación iniciada sin errores";
-        response.status(200).send(JSON.stringify(responseMessage));
+        responseMessage = 'Clientes actualizados correctamente';
+        response.status(200).send(responseMessage);
     } catch (e) {
         console.log('Error: ', e);
     }
@@ -105,11 +102,11 @@ function updateZoneForCustomer(customer, polygonZones) {
     for (var i = 0; i < polygonZones.length; i++) {
         if(verifyZone([customer.address.address1.lat, customer.address.address1.lon], polygonZones[i].points)) {
             customer.zone = polygonZones[i].zonePosition;
-        } else {
-            customer.zone = 0;
-        }
-        saveCustomer(customer);
+            saveCustomer(customer);
+            break;
+        } 
     }
+    return customer;
 }
 
 /**
@@ -884,6 +881,25 @@ exports.insertCredits = onRequest(async (request, response) => {
                 const timeCredit= parteEntera(doc.time);
                 const wayPay =calculateWayPay(timeCredit, Number(doc.numberFee));
                 const idTask =idCredit+"A_"+Math.floor(Math.random() * 100) + 1;
+                const idCustomer=doc.customer;
+
+
+                const dataNewTask={
+                    id:idTask,
+                    date: doc.nextPay,
+                    idCredit: idCredit,
+                    address: data.address,
+                    dateChange: null,
+                    lat: data.lat,
+                    lon: data.lon,
+                    type: data.type,
+                    idUser: data.idUser,
+                    phone: data.phone,
+                    zone:data.zone,
+                    name: data.name,
+                    idVisit: data.idVisit,
+                    stateTask: data.stateTask                   
+                }    
                 
                 const restructuredData = {
                     id: idCredit,
