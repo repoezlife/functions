@@ -220,9 +220,15 @@ exports.reviewTasks = onSchedule("every day 23:00", async (event) => {
                 dateChange: tomorrow,
                 stateTask: "updatedBySystem"                
             } 
+            const dataCredit={                
+                nextPay: tomorrow,
+                idTask: id                
+            } 
 
             saveTask(dataNewTask, id, tomorrow);
             updateTask(dataUpdateTask,id, today);
+            updateCredit(dataCredit, data.idCredit);
+            
         }        
       });
   });
@@ -394,8 +400,12 @@ console.log(" Llamado Funcióncon Type:  "+type +"  valor CreditCommissionPayMed
             console.log("Ingreso if tDUntil :  "+toDateUntil);
             dataCredit.toDateUntil = toDateUntil;
         }
+        const dataPay={
+            capitalPart:capitalPart,
+            utilityPart:utilityPart
+        }
       
-       // savePay(dataPay, idPay, idCredit,date);
+         updatePay(dataPay, idPay);
          updateCredit(dataCredit, idCredit);
         
     }
@@ -407,14 +417,12 @@ console.log(" Llamado Funcióncon Type:  "+type +"  valor CreditCommissionPayMed
                 }
             updateCredit(dataCredit, idCredit);
         }                
-    }
-    
+    }    
 });
   
-  async function savePay(dataP, idPay, idCredit, date) {
-    await admin.firestore().collection('credits').doc(idCredit+"").collection("payments").doc(idPay+"").set(dataP);
- //   await admin.firestore().collection('payments').doc(date+"").collection("payments").doc(idPay+"").set(dataP);
-  }
+  async function updatePay(dataP, idPay) {
+    await admin.firestore().collection('payments').doc(idPay+"").update(dataP);
+   }
 
   async function updateCredit(dataCred, idCredit) {
     const creditRef = admin.firestore().collection("credits").doc(idCredit+"");
