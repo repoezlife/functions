@@ -180,9 +180,190 @@ function formatoFecha2() {
     return formatoFechaModificado;
 }
 exports.distributeTasks = onSchedule("every day 23:30", async (event) => {
-    
+    let band=true;
+    let nCobs=0;
+    let nTasks=0;
+    const idCobs = [];
+    const idTasks = [];
+    let factor1=0;
+    let factor2=0;
+    let residuo=0;
+    let batch = admin.firestore().batch();
+    let tomorrow= formatoFecha2();
+    const refTasks= admin.firestore().collection("tasks").doc(tomorrow+"").collection("tasks");
+    const snapshot = await refTasks.orderBy("zone", "asc").get();
+    if (!snapshot.empty) {
+        snapshot.forEach(doc => {
+            idTasks.push(doc.id);
+          });
+          nTasks=idTasks.length;
+    }
+    else{
+        console.log('No hay tareas para '+tomorrow);
+        band=false;
+    }
+    if(band){
+        const refUsers=admin.firestore().collection("users");
+        const cobs=await refUsers.where('role.code', "==","COB").get();
+        
+        if (!cobs.empty) {
+            cobs.forEach(doc => {
+                idCobs.push(doc.id);
+            });
+            nCobs = (idCobs).length;
+        } else {
+            console.log('No se encontraron documentos con role.code igual a "COB".');
+            return;
+        }
+        factor1=Math.floor(nTasks / nCobs);
+        factor2=factor1*nCobs;
+        residuo=nTasks % nCobs;
+        let cont=0;
+        let u=0;
+        let contBatch=0;
+        for(let i=0; i<nCobs ;i++){
+            cont++;            
+            for(u; u<(cont*factor1);u++){
+                const ref=refTasks.doc(idTasks[u]+"");
+                const dataT={
+                    idUser:idCobs[i]
+                }
+                batch.update(ref, dataT);
+                contBatch++;
+            }
+            u++;
+            if(i== (nCobs-1) && residuo>0){
+                for(u; u<nTasks;u++){
+                    const ref=refTasks.doc(idTasks[u]+"");
+                    const dataT={
+                        idUser:idCobs[i]
+                    }
+                    batch.update(ref, dataT);
+                    contBatch++;
+                }                
+            }
+            if(contBatch>=100){
+                console.log('Ingreso al IF  cont=== 100');
+                    await batch.commit()
+                        .then(() => {
+                        console.log('Commit del lote exitoso');
+                        batch = admin.firestore().batch();
+                        contBatch=0;
 
+                    })
+                    .catch(error => {
+                        console.error('Error al hacer el commit del lote:', error);
+                    });                
+            }           
+        } 
+        if(contBatch>0){
+            console.log('Ingreso al IF  cont=== 70');
+                    await batch.commit()
+                        .then(() => {
+                        console.log('Commit del lote exitoso');
+                        batch = admin.firestore().batch();
+                        contBatch=0;
+
+                    })
+                    .catch(error => {
+                        console.error('Error al hacer el commit del lote:', error);
+                    });
+        }
+    }
 });
+exports.httpDistributeTasks = onRequest(async (request, response) => {
+    let band=true;
+    let nCobs=0;
+    let nTasks=0;
+    const idCobs = [];
+    const idTasks = [];
+    let factor1=0;
+    let factor2=0;
+    let residuo=0;
+    let batch = admin.firestore().batch();
+    let tomorrow= formatoFecha2();
+    const refTasks= admin.firestore().collection("tasks").doc(tomorrow+"").collection("tasks");
+    const snapshot = await refTasks.orderBy("zone", "asc").get();
+    if (!snapshot.empty) {
+        snapshot.forEach(doc => {
+            idTasks.push(doc.id);
+          });
+          nTasks=idTasks.length;
+    }
+    else{
+        console.log('No hay tareas para '+tomorrow);
+        band=false;
+    }
+    if(band){
+        const refUsers=admin.firestore().collection("users");
+        const cobs=await refUsers.where('role.code', "==","COB").get();
+        
+        if (!cobs.empty) {
+            cobs.forEach(doc => {
+                idCobs.push(doc.id);
+            });
+            nCobs = (idCobs).length;
+        } else {
+            console.log('No se encontraron documentos con role.code igual a "COB".');
+            return;
+        }
+        factor1=Math.floor(nTasks / nCobs);
+        factor2=factor1*nCobs;
+        residuo=nTasks % nCobs;
+        let cont=0;
+        let u=0;
+        let contBatch=0;
+        for(let i=0; i<nCobs ;i++){
+            cont++;            
+            for(u; u<(cont*factor1);u++){
+                const ref=refTasks.doc(idTasks[u]+"");
+                const dataT={
+                    idUser:idCobs[i]
+                }
+                batch.update(ref, dataT);
+                contBatch++;
+            }
+            u++;
+            if(i== (nCobs-1) && residuo>0){
+                for(u; u<nTasks;u++){
+                    const ref=refTasks.doc(idTasks[u]+"");
+                    const dataT={
+                        idUser:idCobs[i]
+                    }
+                    batch.update(ref, dataT);
+                    contBatch++;
+                }                
+            }
+            if(contBatch>=100){
+                console.log('Ingreso al IF  cont=== 100');
+                    await batch.commit()
+                        .then(() => {
+                        console.log('Commit del lote exitoso');
+                        batch = admin.firestore().batch();
+                        contBatch=0;
+
+                    })
+                    .catch(error => {
+                        console.error('Error al hacer el commit del lote:', error);
+                    });                
+            }           
+        } 
+        if(contBatch>0){
+            console.log('Ingreso al IF  cont=== 70');
+                    await batch.commit()
+                        .then(() => {
+                        console.log('Commit del lote exitoso');
+                        batch = admin.firestore().batch();
+                        contBatch=0;
+
+                    })
+                    .catch(error => {
+                        console.error('Error al hacer el commit del lote:', error);
+                    });
+        }
+    }
+});
+
 exports.reviewTasks = onSchedule("every day 23:00", async (event) => {
     let today= formatoFecha();
     let tomorrow= formatoFecha2();
@@ -853,14 +1034,14 @@ async function obtenerCoordenadas(direccion, ciudad, pais) {
 exports.insertCredits = onRequest(async (request, response) => {
     try {
         // Leer el archivo JSON con los documentos
-        const jsonData = fs.readFileSync('credits.json', 'utf8');
+        const jsonData = fs.readFileSync('creditsMuestra.json', 'utf8');
         const data = JSON.parse(jsonData);
      //   console.log(data);
         const creditsValues = Object.values(data);
 
         // Obtener una referencia a la colección en Firestore donde deseas insertar los documentos
         const collectionRef = admin.firestore().collection('credits');
-
+        
         // Procesar los documentos y agregarlos a la colección
         let batch = admin.firestore().batch();
         const batchSize = 20; // Tamaño máximo de lote
@@ -882,30 +1063,52 @@ exports.insertCredits = onRequest(async (request, response) => {
                 const wayPay =calculateWayPay(timeCredit, Number(doc.numberFee));
                 const idTask =idCredit+"A_"+Math.floor(Math.random() * 100) + 1;
                 const idCustomer=doc.customer;
+            
+            const snapshot= await admin.firestore().collection('customers').doc(idCustomer).get();
+           // console.log("Customer:  "+idCustomer+"  - "+snapshot.exists+ " - "+snapshot.empty);
+            if (!snapshot.exists) {
+                console.log('No existe customer con:  '+idCustomer);                
+            } 
+            else{
+                const dataCustomer=snapshot.data();
+                //console.log(dataCustomer);
+
+                const addressCustomer=dataCustomer.address.address1.address;
+                const latCustomer=dataCustomer.address.address1.lat;
+                const lonCustomer=dataCustomer.address.address1.lon;
+                const neighborhoodCustomer=dataCustomer.address.address1.neighborhood;
+                const freeReferenceCustomer=dataCustomer.address.address1.freeReference;
+                const zoneCustomer=dataCustomer.zone;
+                const nameCustomer=dataCustomer.name.name;
+                const lastNameCustomer=dataCustomer.name.lastName;              
 
 
                 const dataNewTask={
                     id:idTask,
                     date: doc.nextPay,
                     idCredit: idCredit,
-                    address: data.address,
+                    address: addressCustomer,
                     dateChange: null,
-                    lat: data.lat,
-                    lon: data.lon,
-                    type: data.type,
-                    idUser: data.idUser,
-                    phone: data.phone,
-                    zone:data.zone,
-                    name: data.name,
-                    idVisit: data.idVisit,
-                    stateTask: data.stateTask                   
+                    lat: latCustomer,
+                    lon: lonCustomer,
+                    type: "creditToCollect",
+                    idUser: "1061717912",
+                    phone: cell,
+                    zone:zoneCustomer,
+                    name: nameCustomer,
+                    lastName: lastNameCustomer,
+                    idCustomer:idCustomer,
+                    idVisit: null,
+                    stateTask: "pending"                                       
                 }    
+                const refTask=admin.firestore().collection('tasks').doc(doc.nextPay).collection("tasks").doc(idTask);
+                batch.set(refTask, dataNewTask);
                 
                 const restructuredData = {
                     id: idCredit,
                     balance:Number(doc.balance),
-                    by:"RealTime",
-                    idUser:"AAAAA",
+                    by:"Carlos Andres Silva Vela",
+                    idUser:"1061717925",
                     capitalToPay:Number(doc.capitaltoPay),
                     creditStatus:"active",
                     commissions:0,
@@ -917,34 +1120,34 @@ exports.insertCredits = onRequest(async (request, response) => {
                     timeCredit: timeCredit,
                     totalPay:Number(doc.totalPay),
                     utilityCredit:Number(doc.utilityCredit),
-                    utilityToPay:Number(doc.utilityToPay),
+                    utilityToPay:Number(doc.utilitytoPay),
                     utilityPartial:Number(doc.utilityPartial),
                     value:Number(doc.value),
                     valueFee:Number(doc.valueFee),
                     imageReference:null,
                     wayPay:wayPay,
-                    name:doc.name,
-                    lastName:"",
+                    name:nameCustomer,
+                    lastName:lastNameCustomer,
                     cellphone:cell,
-                    address:doc.address,
-                    lat:doc.lat,
-                    lon:doc.lon,
-                    neighborhood:doc.neighborhood,
-                    addressFreeReference:doc.addressFreeReference,
-                    customerId:doc.customer+"",
+                    address:addressCustomer,
+                    lat:latCustomer,
+                    lon:lonCustomer,
+                    neighborhood:neighborhoodCustomer,
+                    addressFreeReference:freeReferenceCustomer,
+                    customerId:idCustomer,
                     refusesToSign:true,
                     creditCommissionPaymentMedium:0,
-                    zone:doc.zone,
+                    zone:zoneCustomer,
                     dateLastPay:null,
                     idTask:idTask,
-                    toDayUntil:null,
+                    toDateUntil:null,
                     receiptPrintedAmount:0
 
                 };
                 batch.set(docRef, restructuredData);
                                
-                if(cont >= 70){
-                    console.log('Ingreso al IF  cont=== 70');
+                if(cont >= 50){
+                    console.log('Ingreso al IF  cont=== 50');
                     await batch.commit()
                         .then(() => {
                         console.log('Commit del lote exitoso');
@@ -955,7 +1158,8 @@ exports.insertCredits = onRequest(async (request, response) => {
                     .catch(error => {
                         console.error('Error al hacer el commit del lote:', error);
                     });
-                }            
+                }    
+            }                        
         }
 
         if (cont > 0) {
@@ -980,6 +1184,115 @@ exports.insertCredits = onRequest(async (request, response) => {
         response.status(500).send('Error al leer el archivo JSON.');
     }
 });
+
+exports.insertPayments = onRequest(async (request, response) => {
+    try {
+        // Leer el archivo JSON con los documentos
+        const jsonData = fs.readFileSync('paymentsMuestra.json', 'utf8');
+        const data = JSON.parse(jsonData);
+     //   console.log(data);
+        const paymentsValues = Object.values(data);
+
+        // Obtener una referencia a la colección en Firestore donde deseas insertar los documentos
+        const collectionRef = admin.firestore().collection('payments');
+        
+        // Procesar los documentos y agregarlos a la colección
+        let batch = admin.firestore().batch();
+        const batchSize = 20; // Tamaño máximo de lote
+        const maxBatches = 300; // Límite máximo de lotes a insertar
+        let batchesInserted = 0; // Contador de lotes insertados
+        let cont = 0;
+        let cont2 = 0;
+
+        console.log("Tamaño Json: "+ paymentsValues.length); //  registros
+        
+        for (const doc of paymentsValues) {
+            cont=cont+1;
+            cont2=cont2+1;                                  
+                
+                const idPayment=doc.id+"";
+                const docRef = collectionRef.doc(idPayment); // 
+                const typePay= tipoPago(doc.type);
+
+                console.log(cont2+". "+idPayment);
+              
+                const restructuredData = {
+                    id: doc.id,
+                    date:doc.date,
+                    customer:doc.name,
+                    idCustomer:doc.customer,
+                    valuePay:Number(doc.value),
+                    userName:doc.collector,
+                    idUser:"1061717925",
+                    idCredit:doc.idCredit,
+                    type:typePay,
+                    paymentMedium:"efectivo",
+                    imageReferencePay:null,
+                    commissionToCredit:false,
+                    valueCommissionPaymentMedium:0,
+                    creditCommissionPaymentMedium:0,
+                    toDateUntil:null,
+                    extensionDays:0,
+                    nextPayDate:null,
+                    receiptPrintedAmount:0,
+                    utilityPart:doc.utility,
+                    capitalPart:doc.capital
+                };
+                batch.set(docRef, restructuredData);
+                               
+                if(cont >= 90){
+                    console.log('Ingreso al IF  cont=== 90');
+                    await batch.commit()
+                        .then(() => {
+                        console.log('Commit del lote exitoso');
+                        batch = admin.firestore().batch();
+                        cont=0;
+
+                    })
+                    .catch(error => {
+                        console.error('Error al hacer el commit del lote:', error);
+                    });
+                }                                    
+        }
+
+        if (cont > 0) {
+
+            console.log('Ingreso al IF  > 0');
+            await batch.commit()
+            .then(() => {
+                console.log('Commit del lote exitoso');
+                response.status(200).send('Documentos insertados correctamente en Firestore.');
+                cont=0;
+                batch = admin.firestore().batch();
+            })
+            .catch(error => {
+                console.error('Error al hacer el commit del lote:', error);
+            });
+        
+        }
+       
+        
+    } catch (error) {
+        console.error('Error al leer el archivo JSON:', error);
+        response.status(500).send('Error al leer el archivo JSON.');
+    }
+});
+
+function tipoPago(tipo) {
+    
+    switch (tipo){
+        case "Int-Cap":
+            return "ordinary";
+        case "Intereses":
+            return "interest";
+        case "Capital":
+            return "capital";
+        case "Int-Especial":
+            return "specialInterest";
+        default:
+            return "ordinary";
+    }
+}
 
 function parteEntera(cadena) {
     const resultado = cadena.match(/\d+/); // Extrae la parte numérica
