@@ -1132,7 +1132,7 @@ exports.insertCredits = onRequest(async (request, response) => {
                     creditStatus:"active",
                     commissions:0,
                     changeDatePay:null,
-                    date:"01-01-2000",
+                    date:doc.date,
                     nextPay:doc.nextPay,
                     numberFee:Number(doc.numberFee),
                     percentage:Number(doc.percentage),
@@ -1254,8 +1254,8 @@ exports.insertPayments = onRequest(async (request, response) => {
                     extensionDays:0,
                     nextPayDate:null,
                     receiptPrintedAmount:0,
-                    utilityPart:doc.utility,
-                    capitalPart:doc.capital
+                    utilityPart:Number(doc.utility),
+                    capitalPart:Number(doc.capital)
                 };
                 batch.set(docRef, restructuredData);
                                
@@ -1336,3 +1336,88 @@ function calculateWayPay(dias, cuotas) {
             return "monthly";
     }
 }
+
+/* 
+exports.printCustomers = onRequest(async (request, response) => {
+    const customers = admin.firestore().collection("customers");
+    try {
+        const querySnapshot = await customers.get();
+        const documentos = [];
+    
+        // Iterar sobre los documentos y agregarlos al arreglo
+        querySnapshot.forEach(doc => {
+          documentos.push(doc.data());
+        });
+    
+        // Enviar los documentos como respuesta en formato JSON
+        response.status(200).send(documentos);
+      } catch (error) {
+        console.error('Error al obtener documentos:', error);
+        response.status(500).send('Error al obtener documentos');
+      }
+});
+*/
+
+exports.updateCustomersNumberCredits = onRequest(async (request, response) => {
+    try {
+        // Leer el archivo JSON con los documentos
+        const jsonData = fs.readFileSync('customerCreditsNumber.json', 'utf8');
+        const data = JSON.parse(jsonData);
+     //   console.log(data);
+        const customerValue = Object.values(data);
+
+        // Obtener una referencia a la colección en Firestore donde deseas insertar los documentos
+        const collectionRef = admin.firestore().collection('customers');
+        
+        // Procesar los documentos y agregarlos a la colección
+        let batch = admin.firestore().batch();        
+        let cont = 0;       
+        console.log("Tamaño Json: "+ customerValue.length); //  registros
+        
+        for (const doc of customerValue) {
+            cont=cont+1;                        
+                
+                const docRef = collectionRef.doc(doc.customer); //                
+
+                const restructuredData = {
+                    activeCredits:Number(doc.count)
+                };
+                batch.update(docRef, restructuredData);
+                               
+                if(cont >= 90){
+                    console.log('Ingreso al IF  cont=== 90');
+                    await batch.commit()
+                        .then(() => {
+                        console.log('Commit del lote exitoso');
+                        batch = admin.firestore().batch();
+                        cont=0;
+
+                    })
+                    .catch(error => {
+                        console.error('Error al hacer el commit del lote:', error);
+                    });
+                }                                    
+        }
+
+        if (cont > 0) {
+
+            console.log('Ingreso al IF  > 0');
+            await batch.commit()
+            .then(() => {
+                console.log('Commit del lote exitoso');
+                response.status(200).send('Documentos insertados correctamente en Firestore.');
+                cont=0;
+                batch = admin.firestore().batch();
+            })
+            .catch(error => {
+                console.error('Error al hacer el commit del lote:', error);
+            });
+        
+        }
+       
+        
+    } catch (error) {
+        console.error('Error al leer el archivo JSON:', error);
+        response.status(500).send('Error al leer el archivo JSON.');
+    }
+});
