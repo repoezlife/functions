@@ -17,6 +17,7 @@ const apiKey='AIzaSyDLxCPZqwC3qo61Sv0EsCNKpRf3Oj0IzSk';
 
 const admin = require('firebase-admin');
 const { randomInt } = require("crypto");
+const { promises } = require("dns");
 admin.initializeApp();
 
 /**
@@ -88,7 +89,8 @@ exports.updateZoneForCustomers = onRequest(async (request, response) => {
         customers.map(customer => {
             updateZoneForCustomer(customer, polygonZones);
         });
-        responseMessage = 'Clientes actualizados correctamente';
+        saveMultipleCustomer(customers);
+        responseMessage = 'Clientes actualizando correctamente';
         response.status(200).send(responseMessage);
     } catch (e) {
         console.log('Error: ', e);
@@ -102,19 +104,36 @@ function updateZoneForCustomer(customer, polygonZones) {
     for (var i = 0; i < polygonZones.length; i++) {
         if(verifyZone([customer.address.address1.lat, customer.address.address1.lon], polygonZones[i].points)) {
             customer.zone = polygonZones[i].zonePosition;
-            saveCustomer(customer);
-            break;
-        } 
+            return customer;
+        }
     }
+    customer.zone = -1;
     return customer;
+}
+
+/**
+ * 
+ */
+async function saveMultipleCustomer(customerList) {
+    const pomises = [];
+    customerList.forEach(customer => {
+        pomises.push(saveCustomer(customer));
+    });
+    const dataloaded = await Promise.all(pomises);
 }
 
 /**
  * Save Customer in database 
  * @param {any} customer element customer of database
  */
-function saveCustomer(customer) {
-    admin.firestore().collection(CUSTOMERS_COLLECTION_NAME).doc(customer.id).set(customer);
+async function saveCustomer(customer) {
+    try {
+        console.log('actualizando cliente...' + customer.id + ' :: ' + customer.zone);
+        return await admin.firestore().collection(CUSTOMERS_COLLECTION_NAME).doc(customer.id).set(customer);
+    } catch (err) {
+        console.log('el error con ci:' + customer.id);
+        console.log(err);
+    }
 }
 
 /**
