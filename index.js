@@ -891,8 +891,8 @@ async function updateZoneCreditsTasks(idCustomer, zona, activeCredits){
                 const dataZone={
                     zone:zona
                 }                
-                const uT = await updateTask(dataZone, doc.idTask, doc.nextPay);
-                const uC= await updateCredit(dataZone, doc.id);
+               updateTask(dataZone, doc.idTask, doc.nextPay);
+               updateCredit(dataZone, doc.id);
             }
             else{
                 console.log('No se encontraron creditos activos a nombre de '+idCustomer);
