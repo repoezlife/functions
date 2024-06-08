@@ -788,4 +788,106 @@ function tipoPago(tipo) {
     }
 }
 
+exports.distributeTasks = onSchedule(
+    {schedule: 'every day 23:30',
+    timeZone: 'America/Bogota', },
+     async (event) => {
+    let band=true;
+    let nCobs=0;
+    let nTasks=0;
+    const idCobs = [];
+    const idTasks = [];
+    let factor1=0;
+    let factor2=0;
+    let residuo=0;
+    let batch = admin.firestore().batch();
+    let tomorrow= formatoFecha2();
+    const refTasks= admin.firestore().collection("tasks").doc(tomorrow+"").collection("tasks");
+    const snapshot = await refTasks.orderBy("zone", "asc").get();
+    
+    if (!snapshot.empty) {
+        snapshot.forEach(doc => {
+            idTasks.push(doc.id);
+          });
+          nTasks=idTasks.length;
+    }
+    else{
+        console.log('No hay tareas para '+tomorrow);
+        band=false;
+    }
+    if(band){
+        const refUsers=admin.firestore().collection("users");
+        const cobs=await refUsers.where('role.code', "==","COB").get();
+        
+        if (!cobs.empty) {
+            cobs.forEach(doc => {
+                idCobs.push(doc.id);
+            });
+            nCobs = (idCobs).length;
+        } else {
+            console.log('No se encontraron documentos con role.code igual a "COB".');
+            return;
+        }
+        factor1=Math.floor(nTasks / nCobs);
+        factor2=factor1*nCobs;
+        residuo=nTasks % nCobs;
+        let cont=0;
+        let u=0;
+        let contBatch=0;
+
+        
+
+        for(let i=0; i<nCobs ;i++){
+            cont++;            
+            for(u; u<(cont*factor1);u++){
+                const ref=refTasks.doc(idTasks[u]+"");
+                const dataT={
+                    idUser:idCobs[i]
+                }
+                batch.update(ref, dataT);
+                contBatch++;
+            }
+            u++;
+            if(i== (nCobs-1) && residuo>0){
+                for(u; u<nTasks;u++){
+                    const ref=refTasks.doc(idTasks[u]+"");
+                    const dataT={
+                        idUser:idCobs[i]
+                    }
+                    batch.update(ref, dataT);
+                    contBatch++;
+                }                
+            }
+            if(contBatch>=100){
+                console.log('Ingreso al IF  cont=== 100');
+                    await batch.commit()
+                        .then(() => {
+                        console.log('Commit del lote exitoso');
+                        batch = admin.firestore().batch();
+                        contBatch=0;
+
+                    })
+                    .catch(error => {
+                        console.error('Error al hacer el commit del lote:', error);
+                    });                
+            }           
+        } 
+        if(contBatch>0){
+            console.log('Ingreso al IF  cont=== 70');
+                    await batch.commit()
+                        .then(() => {
+                        console.log('Commit del lote exitoso');
+                        batch = admin.firestore().batch();
+                        contBatch=0;
+
+                    })
+                    .catch(error => {
+                        console.error('Error al hacer el commit del lote:', error);
+                    });
+        }
+        response("Actualización OK");
+    }
+});
+
+
  */
