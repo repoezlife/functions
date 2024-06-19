@@ -19,6 +19,8 @@ const admin = require('firebase-admin');
 const { randomInt } = require("crypto");
 const { promises } = require("dns");
 const { log } = require("console");
+const { resolve } = require("path");
+const { rejects } = require("assert");
 admin.initializeApp();
 
 /**
@@ -39,19 +41,23 @@ exports.getZone = onDocumentCreated("/customers/{id}", async (event) => {
         return;
     }
     const customer = snapshot.data();
-    const refZones = admin.firestore().collection(ZONE_COLLECTION_NAME);
-        const zonesSnapshot = await refZones.get();
-        if (zonesSnapshot.empty) {
-            let responseMessage = 'No matching documents in Zones.';
-            console.log(responseMessage);
-            response.status(200).send(responseMessage);
-        }
-        let zones = [];
-        zonesSnapshot.forEach(zoneData => {
-            zones.push(zoneData.data());
-        });
-    polygonZones = getPolygonMapByZones(zones);
-    updateZoneForCustomer(customer, polygonZones);
+    getZoneByCustomer(customer).then(zoneCustomer => {
+        customer.zone = zoneCustomer;
+        saveCustomer(customer);
+    });
+});
+
+/**
+ * Update Customer
+ */
+exports.updateCustomer = onDocumentUpdated("/customers/{id}", async (event) => {
+    console.log('actualizando customer');
+    const customerData =event.data.after.data();
+    getZoneByCustomer(customerData).then(zoneCustomer => {
+        console.log('Zona del customer:' + customerData.id + '::' + zoneCustomer);
+        customerData.zone = zoneCustomer;
+        saveCustomer(customerData);
+    });
 });
 
 /**
@@ -110,6 +116,45 @@ function updateZoneForCustomer(customer, polygonZones) {
     }
     customer.zone = -1;
     return customer;
+}
+
+/**
+ * Return zones data
+ */
+const getZonesData = new Promise((resolve, reject) => {
+    console.log('buscando zonas...');
+    const refZones = admin.firestore().collection(ZONE_COLLECTION_NAME);
+    refZones.get().then(zonesSnapshot => {
+        if (zonesSnapshot.empty) {
+            let responseMessage = 'No matching documents in Zones.';
+            console.log(responseMessage);
+        }
+        let zones = [];
+        zonesSnapshot.forEach(zoneData => {
+            zones.push(zoneData.data());
+        });
+        console.log(zones);
+        resolve(zones);
+    });
+});
+
+/**
+ * Get Zone By customer
+ */
+function getZoneByCustomer(customer) {
+    return new Promise((resolve, reject) => {
+        getZonesData.then(zones => {
+            polygonZones = getPolygonMapByZones(zones);
+            zone = -1;
+            for (var i = 0; i < polygonZones.length; i++) {
+                if(verifyZone([customer.address.address1.lat, customer.address.address1.lon], polygonZones[i].points)) {
+                    zone = polygonZones[i].zonePosition;
+                    break;
+                }
+            }
+            resolve(zone);
+        });
+    });
 }
 
 /**
