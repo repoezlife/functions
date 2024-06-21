@@ -59,7 +59,7 @@ exports.updateCustomer = onDocumentUpdated("/customers/{id}", async (event) => {
             console.log('Zona del customer:' + customerData.id + '::' + zoneCustomer);
             customerData.zone = zoneCustomer;
             saveCustomer(customerData).then(() => {
-                updateZoneCreditsTasks(customer.id, customer.zone, customer.activeCredits);
+                updateZoneCreditsTasks(customerData.id, customerData.zone, customerData.activeCredits);
             });
         });
     }
@@ -1040,24 +1040,47 @@ exports.updatePayment = onDocumentUpdated("/payments/{idPay}", (event) => {
 });
 
 async function updateZoneCreditsTasks(idCustomer, zona, activeCredits){
+
+    console.log("Update Credits and task,  "+idCustomer+"  "+zona+"  "+activeCredits);
     
     const refCredits=admin.firestore().collection("credits");
     const credits=await refCredits.where('customerId', "==", idCustomer).get();
+    let batch = admin.firestore().batch();
+    let cB=0;
 
     if (!credits.empty) {
         credits.forEach(async doc => {
             if(doc.creditStatus != 'expired'){
+                const dt= doc.data();
+                console.log("UpdateCredit: "+dt.id+"  UpdateTask: "+dt.nextPay+"/"+dt.idTask);
+
                 const dataZone={
                     zone:zona
-                }                
-               updateTask(dataZone, doc.idTask, doc.nextPay);
-               updateCredit(dataZone, doc.id);
+                }
+                const refT=admin.firestore().collection("tasks").doc(dt.nextPay).collection("tasks").doc(dt.idTask);
+                const refC=admin.firestore().collection("credits").doc(dt.id+"");                   
+               batch.update(refT, dataZone);
+               batch.update(refC, dataZone);
+               cB++;
+                
             }
             else{
                 console.log('No se encontraron creditos activos a nombre de '+idCustomer);
             }            
         });
-       
+        if(cB>0){
+            console.log('Ingreso al IF  cont > 0');
+                    await batch.commit()
+                        .then(() => {
+                        console.log('Commit del lote exitoso');
+                        batch = admin.firestore().batch();
+                        cB=0;
+
+                    })
+                    .catch(error => {
+                        console.error('Error al hacer el commit del lote:', error);
+                    });
+        }       
     } else {
         console.log('No se encontraron creditos a nombre de '+idCustomer);
         return;
