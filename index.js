@@ -50,20 +50,6 @@ exports.getZone = onDocumentCreated("/customers/{id}", async (event) => {
 /**
  * Update Customer
  */
-exports.updateCustomer = onDocumentUpdated("/customers/{id}", async (event) => {
-    console.log('actualizando customer');
-    const customerData =event.data.after.data();
-    const customerDataBf =event.data.before.data();
-    if (customerData.address.address1.lat != customerDataBf.address.address1.lat) {
-        getZoneByCustomer(customerData).then(zoneCustomer => {
-            console.log('Zona del customer:' + customerData.id + '::' + zoneCustomer);
-            customerData.zone = zoneCustomer;
-            saveCustomer(customerData).then(() => {
-                updateZoneCreditsTasks(customerData.id, customerData.zone, customerData.activeCredits);
-            });
-        });
-    }
-});
 
 /**
  * Update zones for all customers
@@ -548,19 +534,25 @@ exports.reviewTasks = onSchedule(
     let today= formatoFecha();
     let tomorrow= formatoFecha2();
     const refTasks= admin.firestore().collection("tasks").doc(today+"").collection("tasks");
+
+    let batch = admin.firestore().batch();
     //console.log(refTasks);
+    const cont=0;
     const snapshot = await refTasks.get();
     if (snapshot.empty) {
         console.log('No matching documents.');
         return;
-      }        
-      snapshot.forEach(doc => {
+      }  
+
+    snapshot.forEach(async doc => {
         //console.log(doc.id);
-        const data = doc.data();        
+        const data = doc.data();    
+        cont++;    
         
         if(data.stateTask=="pending"){
             console.log("Id de tareas pendientes:  "+ data.id);
             const id=data.id;
+
             const dataNewTask={
                 id:id,
                 date: tomorrow,
@@ -577,26 +569,68 @@ exports.reviewTasks = onSchedule(
                 idVisit: data.idVisit,
                 stateTask: data.stateTask                   
             }    
+            const refNewTask= admin.firestore().collection("tasks").doc(tomorrow+"").collection("tasks").doc(id);
+            batch.set(refNewTask, dataNewTask);
+
             const dataUpdateTask={                
                 dateChange: tomorrow,
                 stateTask: "updatedBySystem"                
             } 
+            const refTaskToday= admin.firestore().collection("tasks").doc(today).collection("tasks").doc(id);
+            batch.update(refTaskToday,dataUpdateTask);
+
             const dataCredit={                
                 nextPay: tomorrow,
                 idTask: id                
             } 
+            const refUCredit= admin.firestore().collection("credits").doc(idCredit);
+            batch.update(refUCredit, dataCredit);
 
-            saveTask(dataNewTask, id, tomorrow);
+            console.log(dataNewTask);
+            console.log(dataUpdateTask);
+            console.log(dataCredit);
+
+            if(cont >= 10){
+                console.log('Ingreso al IF  cont=== 10');
+                await batch.commit()
+                    .then(() => {
+                    console.log('Commit del lote exitoso');
+                    batch = admin.firestore().batch();
+                    cont=0;
+
+                })
+                .catch(error => {
+                    console.error('Error al hacer el commit del lote:', error);
+                });
+            }  
+
+           /*  saveTask(dataNewTask, id, tomorrow);
             updateTask(dataUpdateTask,id, today);
-            updateCredit(dataCredit, data.idCredit);
+            updateCredit(dataCredit, data.idCredit); */
             
         }        
       });
+
+      if (cont > 0) {
+        console.log('Ingreso al IF  > 0');
+        await batch.commit()
+        .then(() => {
+            console.log('Commit del lote exitoso');
+            response.status(200).send('Documentos insertados correctamente en Firestore.');
+            cont=0;
+            batch = admin.firestore().batch();
+        })
+        .catch(error => {
+            console.error('Error al hacer el commit del lote:', error);
+        });
+    
+    }
+
   });
 
   async function saveTask(dataT, id, date) {
     await admin.firestore().collection('tasks').doc(date).collection("tasks").doc(id).set(dataT).then(() => {
-        console.log('Documento Creado exitosamente. ' + idN);
+        console.log('Documento Creado exitosamente. ' + id);
       })
       .catch((error) => {
         console.error('Error al crear el documento:', error);
@@ -612,6 +646,7 @@ exports.reviewTasks = onSchedule(
       });
   }
 
+
 exports.createPay = onDocumentCreated("/payments/{idPay}", (event) => {
     // Get an object representing the document
     // e.g. {'name': 'Marie', 'age': 66}
@@ -621,8 +656,7 @@ exports.createPay = onDocumentCreated("/payments/{idPay}", (event) => {
         return;
     }
     const data = snapshot.data();
-
-   // console.log(dia);
+   
    let dia= formatoFecha();
     let date = data.date; // fecha de abono
     let idCredit = data.idCredit; //id del crédito
@@ -652,7 +686,9 @@ exports.createPay = onDocumentCreated("/payments/{idPay}", (event) => {
     let extensionDays = data.extensionDays;
 //    let refusesToSign=data.refusesToSign;
 
+console.log(" Abono a crédito:  "+idCredit +"  Con pago de id:    "+idPay);
 console.log(" Llamado Funcióncon Type:  "+type +"  valor CreditCommissionPayMediium:    "+creditCommissionPaymentMedium);
+console.log("Información que llega del abono /n:   "+data);
 
     let utilityPart=0;
     let capitalPart=0;
@@ -688,6 +724,7 @@ console.log(" Llamado Funcióncon Type:  "+type +"  valor CreditCommissionPayMed
 
     if(type!="commissionsPayment"){ //verificar type de pago para afectar o no los valores del crédito
         switch(type){
+
             case "ordinary":
                 if(capitalToPay>0){    
 
@@ -765,6 +802,9 @@ console.log(" Llamado Funcióncon Type:  "+type +"  valor CreditCommissionPayMed
             capitalPart:capitalPart,
             utilityPart:utilityPart
         }
+
+        console.log("Información a actualizar del crédito: "+dataCredit);
+        console.log("Información a actualizar del abono: "+dataPay);
       
          updatePay(dataPay, idPay);
          updateCredit(dataCredit, idCredit);
@@ -781,17 +821,23 @@ console.log(" Llamado Funcióncon Type:  "+type +"  valor CreditCommissionPayMed
     }    
 });
 
+
 async function updatePay(dataP, idPay) {
-    await admin.firestore().collection('payments').doc(idPay+"").update(dataP);
+    await admin.firestore().collection('payments').doc(idPay+"").update(dataP).then(() => {
+        console.log(idPay + 'Pago actualizado exitosamente. ' + dataP);
+      })
+      .catch((error) => {
+        console.error(idPay+ 'Error al actualizar el pago:', error);
+      });
    }
  /* */
   async function updateCredit(dataCred, idCredit) {
     const creditRef = admin.firestore().collection("credits").doc(idCredit+"");
     await creditRef.update(dataCred).then(() => {
-        console.log('Credito actualizado exitosamente. ' + idCredit);
+        console.log(idCredit + '  Credito actualizado exitosamente. ' + dataCred);
       })
       .catch((error) => {
-        console.error('Error al actualizar el credito:', error);
+        console.error(idCredit+ '  Error al actualizar el credito:', error);
       });
   }
   async function registerPayCommission(dataP, idPay) {
@@ -873,6 +919,8 @@ exports.deletePay = onDocumentDeleted("/payments/{idPay}", (event) => {
     let toDateUntil = data.toDateUntil;
     let extensionDays = data.extensionDays;
     let timeCredit = data.timeCredit;
+    console.log("Eliminar IdPay: "+data.idPay);
+    console.log(data);
 
     if(type!="commissionsPayment"){ //verificar type de pago para afectar o no los valores del crédito
           
@@ -1088,3 +1136,366 @@ async function updateZoneCreditsTasks(idCustomer, zona, activeCredits){
     
 
 }
+
+
+
+/* 
+
+//Funciones para actualizar los datos
+
+exports.insertCredits = onRequest(async (request, response) => {
+    try {
+        // Leer el archivo JSON con los documentos
+        const jsonData = fs.readFileSync('creditsActives.json', 'utf8');
+        const data = JSON.parse(jsonData);
+     //   console.log(data);
+        const creditsValues = Object.values(data);
+
+        // Obtener una referencia a la colección en Firestore donde deseas insertar los documentos
+        const collectionRef = admin.firestore().collection('credits');
+        
+        // Procesar los documentos y agregarlos a la colección
+        let batch = admin.firestore().batch();
+        const batchSize = 20; // Tamaño máximo de lote
+        const maxBatches = 300; // Límite máximo de lotes a insertar
+        let batchesInserted = 0; // Contador de lotes insertados
+        let cont = 0;
+        let cont2 = 0;
+
+        console.log("Tamaño Json: "+ creditsValues.length); //  registros
+        for (const doc of creditsValues) {
+            cont=cont+1;
+            cont2=cont2+1;
+                                  
+                const idC= doc.idCredit || "A_"+Math.floor(Math.random() * 100) + 1;
+                const idCredit=idC+"";
+                const cell=doc.cell+"";                
+                const docRef = collectionRef.doc(idCredit); // 
+                const timeCredit= parteEntera(doc.time);
+                const wayPay =calculateWayPay(timeCredit, Number(doc.numberFee));
+                const idTask =idCredit;
+                const idCustomer=doc.customer;
+            
+            const snapshot= await admin.firestore().collection('customers').doc(idCustomer).get();
+           // console.log("Customer:  "+idCustomer+"  - "+snapshot.exists+ " - "+snapshot.empty);
+            if (!snapshot.exists) {
+                console.log('No existe customer con:  '+idCustomer);                
+            } 
+            else{
+                const dataCustomer=snapshot.data();
+                //console.log(dataCustomer);
+
+                const addressCustomer=dataCustomer.address.address1.address;
+                const latCustomer=dataCustomer.address.address1.lat;
+                const lonCustomer=dataCustomer.address.address1.lon;
+                const neighborhoodCustomer=dataCustomer.address.address1.neighborhood || "";
+                const freeReferenceCustomer=dataCustomer.address.address1.freeReference || "";
+                const zoneCustomer=dataCustomer.zone || -1;
+                const nameCustomer=dataCustomer.name.name;
+                const lastNameCustomer=dataCustomer.name.lastName;              
+
+
+                const dataNewTask={
+                    id:idTask,
+                    date: doc.nextPay,
+                    idCredit: idCredit,
+                    address: addressCustomer,
+                    dateChange: null,
+                    lat: latCustomer,
+                    lon: lonCustomer,
+                    type: "creditToCollect",
+                    idUser: "1061717912",
+                    phone: cell,
+                    zone:zoneCustomer,
+                    name: nameCustomer,
+                    lastName: lastNameCustomer,
+                    idCustomer:idCustomer,
+                    idVisit: null,
+                    stateTask: "pending",
+                    userWhoModified:null                                       
+                }    
+                const refTask=admin.firestore().collection('tasks').doc(doc.nextPay).collection("tasks").doc(idTask);
+                batch.set(refTask, dataNewTask);
+                
+                const restructuredData = {
+                    id: idCredit,
+                    balance:Number(doc.balance),
+                    by:"Carlos Andres Silva Vela",
+                    idUser:"1061717925",
+                    capitalToPay:Number(doc.capitaltoPay),
+                    creditStatus:"active",
+                    commissions:0,
+                    changeDatePay:null,
+                    date:doc.date,
+                    nextPay:doc.nextPay,
+                    numberFee:Number(doc.numberFee),
+                    percentage:Number(doc.percentage),
+                    timeCredit: timeCredit,
+                    totalPay:Number(doc.totalPay),
+                    utilityCredit:Number(doc.utilityCredit),
+                    utilityToPay:Number(doc.utilitytoPay),
+                    utilityPartial:Number(doc.utilityPartial),
+                    value:Number(doc.value),
+                    valueFee:Number(doc.valueFee),
+                    imageReference:null,
+                    wayPay:wayPay,
+                    name:nameCustomer,
+                    lastName:lastNameCustomer,
+                    cellphone:cell,
+                    address:addressCustomer,
+                    lat:latCustomer,
+                    lon:lonCustomer,
+                    neighborhood:neighborhoodCustomer,
+                    addressFreeReference:freeReferenceCustomer,
+                    customerId:idCustomer,
+                    refusesToSign:true,
+                    creditCommissionPaymentMedium:0,
+                    zone:zoneCustomer,
+                    dateLastPay:null,
+                    idTask:idTask,
+                    toDateUntil:null,
+                    receiptPrintedAmount:0
+
+                };
+                batch.set(docRef, restructuredData);
+                               
+                if(cont >= 200){
+                    console.log('Ingreso al IF  cont=== 200');
+                    await batch.commit()
+                        .then(() => {
+                        console.log('Commit del lote exitoso');
+                        batch = admin.firestore().batch();
+                        cont=0;
+
+                    })
+                    .catch(error => {
+                        console.error('Error al hacer el commit del lote:', error);
+                    });
+                }    
+            }                        
+        }
+
+        if (cont > 0) {
+
+            console.log('Ingreso al IF  > 0');
+            await batch.commit()
+            .then(() => {
+                console.log('Commit del lote exitoso');
+                response.status(200).send('Documentos insertados correctamente en Firestore.');
+                cont=0;
+                batch = admin.firestore().batch();
+            })
+            .catch(error => {
+                console.error('Error al hacer el commit del lote:', error);
+            });        
+        }       
+        
+    } catch (error) {
+        console.error('Error al leer el archivo JSON:', error);
+        response.status(500).send('Error al leer el archivo JSON.');
+    }
+});
+
+function parteEntera(cadena) {
+    const resultado = cadena.match(/\d+/); // Extrae la parte numérica
+    const jj = resultado ? parseInt(resultado[0], 10) : null; // Convierte a entero y devuelve, o null si no encuentra un número
+    if(jj === null){
+        return 30;
+    }
+    return  (jj * 30);
+}
+
+function calculateWayPay(dias, cuotas) {
+    const meses=dias/30;
+    const factor =meses/cuotas;
+    switch (factor){
+        case 0.25:
+            return "weekly";
+        case 0.5:
+            return "biweekly";
+        case 1:
+            return "monthly";
+        default:
+            return "monthly";
+    }
+}
+exports.updateCustomersNumberCredits = onRequest(async (request, response) => {
+    try {
+        // Leer el archivo JSON con los documentos
+        const jsonData = fs.readFileSync('customerCreditsNumber.json', 'utf8');
+        const data = JSON.parse(jsonData);
+     //   console.log(data);
+        const customerValue = Object.values(data);
+
+        // Obtener una referencia a la colección en Firestore donde deseas insertar los documentos
+        const collectionRef = admin.firestore().collection('customers');
+        
+        // Procesar los documentos y agregarlos a la colección
+        let batch = admin.firestore().batch();        
+        let cont = 0;       
+        console.log("Tamaño Json: "+ customerValue.length); //  registros
+        
+        for (const doc of customerValue) {
+            cont=cont+1;                        
+                
+                const docRef = collectionRef.doc(doc.customer); //                
+
+                const restructuredData = {
+                    activeCredits:Number(doc.count)
+                };
+                batch.update(docRef, restructuredData);
+                               
+                if(cont >= 150){
+                    console.log('Ingreso al IF  cont=== 150');
+                    await batch.commit()
+                        .then(() => {
+                        console.log('Commit del lote exitoso');
+                        batch = admin.firestore().batch();
+                        cont=0;
+
+                    })
+                    .catch(error => {
+                        console.error('Error al hacer el commit del lote:', error);
+                    });
+                }                                    
+        }
+
+        if (cont > 0) {
+
+            console.log('Ingreso al IF  > 0');
+            await batch.commit()
+            .then(() => {
+                console.log('Commit del lote exitoso');
+                response.status(200).send('Documentos insertados correctamente en Firestore.');
+                cont=0;
+                batch = admin.firestore().batch();
+            })
+            .catch(error => {
+                console.error('Error al hacer el commit del lote:', error);
+            });        
+        }      
+        
+    } catch (error) {
+        console.error('Error al leer el archivo JSON:', error);
+        response.status(500).send('Error al leer el archivo JSON.');
+    }
+});
+
+exports.insertPayments = onRequest(async (request, response) => {
+    try {
+        // Leer el archivo JSON con los documentos
+        const jsonData = fs.readFileSync('paymentsActives.json', 'utf8');
+        const data = JSON.parse(jsonData);
+     //   console.log(data);
+        const paymentsValues = Object.values(data);
+
+        // Obtener una referencia a la colección en Firestore donde deseas insertar los documentos
+        const collectionRef = admin.firestore().collection('payments');
+        
+        // Procesar los documentos y agregarlos a la colección
+        let batch = admin.firestore().batch();
+        const batchSize = 20; // Tamaño máximo de lote
+        const maxBatches = 300; // Límite máximo de lotes a insertar
+        let batchesInserted = 0; // Contador de lotes insertados
+        let cont = 0;
+        let cont2 = 0;
+
+        console.log("Tamaño Json: "+ paymentsValues.length); //  registros
+        
+        for (const doc of paymentsValues) {
+            cont=cont+1;
+            cont2=cont2+1;    
+            const idPayment=doc.id+"";     
+            console.log(cont2+". "+idPayment);
+
+          //  if(doc.hasOwnProperty(value)){
+
+                
+                const docRef = collectionRef.doc(idPayment); // 
+                const typePay= tipoPago(doc.type);
+                const coll= doc.collector || "";
+                const val= Number(doc.value) || 0;               
+                const dat= (doc.date) || "01-01-2000";  
+              
+                const restructuredData = {
+                    idPay: idPayment,
+                    date:doc.date,
+                    customer:doc.name,
+                    idCustomer:doc.customer,
+                    valuePay:val,
+                    userName:coll,
+                    idUser:"1061717925",
+                    idCredit:doc.idCredit,
+                    type:typePay,
+                    paymentMedium:"efectivo",
+                    imageReferencePay:null,
+                    commissionToCredit:false,
+                    valueCommissionPaymentMedium:0,
+                    creditCommissionPaymentMedium:0,
+                    toDateUntil:null,
+                    extensionDays:0,
+                    nextPayDate:null,
+                    receiptPrintedAmount:0,
+                    utilityPart:Number(doc.utility),
+                    capitalPart:Number(doc.capital)
+                };
+                batch.set(docRef, restructuredData);
+                               
+                if(cont >= 400){
+                    console.log('Ingreso al IF  cont=== 400');
+                    await batch.commit()
+                        .then(() => {
+                        console.log('Commit del lote exitoso');
+                        batch = admin.firestore().batch();
+                        cont=0;
+
+                    })
+                    .catch(error => {
+                        console.error('Error al hacer el commit del lote:', error);
+                    });
+                } 
+
+          //  }
+                
+                                                   
+        }
+
+        if (cont > 0) {
+
+            console.log('Ingreso al IF  > 0');
+            await batch.commit()
+            .then(() => {
+                console.log('Commit del lote exitoso');
+                response.status(200).send('Documentos insertados correctamente en Firestore.');
+                cont=0;
+                batch = admin.firestore().batch();
+            })
+            .catch(error => {
+                console.error('Error al hacer el commit del lote:', error);
+            });
+        
+        }
+       
+        
+    } catch (error) {
+        console.error('Error al leer el archivo JSON:', error);
+        response.status(500).send('Error al leer el archivo JSON.');
+    }
+});
+
+function tipoPago(tipo) {
+    
+    switch (tipo){
+        case "Int-Cap":
+            return "ordinary";
+        case "Intereses":
+            return "interest";
+        case "Capital":
+            return "capital";
+        case "Int-Especial":
+            return "specialInterest";
+        default:
+            return "ordinary";
+    }
+}
+ */
