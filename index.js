@@ -112,7 +112,7 @@ function updateZoneForCustomer(customer, polygonZones) {
 /**
  * Return zones data
  */
-const getZonesData = new Promise((resolve, reject) => {
+/* const getZonesData = new Promise((resolve, reject) => {
     console.log('buscando zonas...');
     const refZones = admin.firestore().collection(ZONE_COLLECTION_NAME);
     refZones.get().then(zonesSnapshot => {
@@ -128,6 +128,24 @@ const getZonesData = new Promise((resolve, reject) => {
         resolve(zones);
     });
 });
+ */
+function getZonesData() {
+    return new Promise((resolve, reject) => {
+        console.log('buscando zonas...');
+        const refZones = admin.firestore().collection(ZONE_COLLECTION_NAME);
+        refZones.get().then(zonesSnapshot => {
+            if (zonesSnapshot.empty) {
+                let responseMessage = 'No matching documents in Zones.';
+                console.log(responseMessage);
+            }
+            let zones = [];
+            zonesSnapshot.forEach(zoneData => {
+                zones.push(zoneData.data());
+            });
+            resolve(zones);
+        });
+    });
+}
 
 /**
  * Get Zone By customer
@@ -262,7 +280,7 @@ exports.distributeTasks = onSchedule(
     console.log(idSpRoute+":  "+nCll);
 
     const refTasks= admin.firestore().collection("tasks").doc(tomorrow+"").collection("tasks");
-    const snapshot = await refTasks.orderBy("zone", "asc").get();
+    const snapshot = await refTasks.orderBy("zone", "desc").get();
     if (!snapshot.empty) {
         
         snapshot.forEach(doc => {
@@ -537,7 +555,7 @@ exports.reviewTasks = onSchedule(
 
     let batch = admin.firestore().batch();
     //console.log(refTasks);
-    const cont=0;
+    let cont=0;
     const snapshot = await refTasks.get();
     if (snapshot.empty) {
         console.log('No matching documents.');
@@ -546,12 +564,18 @@ exports.reviewTasks = onSchedule(
 
     snapshot.forEach(async doc => {
         //console.log(doc.id);
-        const data = doc.data();    
-        cont++;    
+        const data = doc.data();               
         
         if(data.stateTask=="pending"){
-            console.log("Id de tareas pendientes:  "+ data.id);
+            cont=cont+1; 
+
             const id=data.id;
+            const idC=data.idCredit;
+            const tp=data.type;
+            const idV=data.idVisit;
+
+            console.log("Id de tareas pendientes:  "+ data.id+ "  /type: "+tp+"  /Credit: "+ idC+"  /Visit: "+idV);
+            
 
             const dataNewTask={
                 id:id,
@@ -566,8 +590,10 @@ exports.reviewTasks = onSchedule(
                 phone: data.phone,
                 zone:data.zone,
                 name: data.name,
+                lastName:data.lastName,
                 idVisit: data.idVisit,
-                stateTask: data.stateTask                   
+                stateTask: data.stateTask,
+                userWhoModified:null
             }    
             const refNewTask= admin.firestore().collection("tasks").doc(tomorrow+"").collection("tasks").doc(id);
             batch.set(refNewTask, dataNewTask);
@@ -579,18 +605,33 @@ exports.reviewTasks = onSchedule(
             const refTaskToday= admin.firestore().collection("tasks").doc(today).collection("tasks").doc(id);
             batch.update(refTaskToday,dataUpdateTask);
 
-            const dataCredit={                
-                nextPay: tomorrow,
-                idTask: id                
-            } 
-            const refUCredit= admin.firestore().collection("credits").doc(idCredit);
-            batch.update(refUCredit, dataCredit);
+            if(tp == "visit"){
+                
+                const dataVisit={                
+                    schedulingDate: tomorrow
+                                    
+                } 
+                const refUVisit= admin.firestore().collection("visits").doc(idV);
+                batch.update(refUVisit, dataVisit);
+                console.log("If visit:  " + dataVisit);
+                updateVisit(dataVisit,idV );
+            }
+            else{
+                const dataCredit={                
+                    nextPay: tomorrow,
+                    idTask: id                
+                } 
+                const refUCredit= admin.firestore().collection("credits").doc(idC);
+                batch.update(refUCredit, dataCredit);
 
+                updateCredit(dataCredit, idC);
+                
+            }
+                        
             console.log(dataNewTask);
-            console.log(dataUpdateTask);
-            console.log(dataCredit);
+            console.log(dataUpdateTask);           
 
-            if(cont >= 10){
+      /*       if(cont >= 10){
                 console.log('Ingreso al IF  cont=== 10');
                 await batch.commit()
                     .then(() => {
@@ -602,16 +643,16 @@ exports.reviewTasks = onSchedule(
                 .catch(error => {
                     console.error('Error al hacer el commit del lote:', error);
                 });
-            }  
+            }   */
 
-           /*  saveTask(dataNewTask, id, tomorrow);
+            saveTask(dataNewTask, id, tomorrow);
             updateTask(dataUpdateTask,id, today);
-            updateCredit(dataCredit, data.idCredit); */
+            
             
         }        
       });
 
-      if (cont > 0) {
+/*       if (cont > 0) {
         console.log('Ingreso al IF  > 0');
         await batch.commit()
         .then(() => {
@@ -624,7 +665,7 @@ exports.reviewTasks = onSchedule(
             console.error('Error al hacer el commit del lote:', error);
         });
     
-    }
+    } */
 
   });
 
@@ -643,6 +684,16 @@ exports.reviewTasks = onSchedule(
       })
       .catch((error) => {
         console.error('Error al actualizar tarea :', error);
+      });
+  }
+
+  async function updateVisit(dataVisit, idVisit) {
+    const visitRef = admin.firestore().collection("visits").doc(idVisit+"");
+    await creditRef.update(dataVisit).then(() => {
+        console.log(idVisit + '  Visita actualizado exitosamente. ' + dataVisit);
+      })
+      .catch((error) => {
+        console.error(idVisit+ '  Error al actualizar el credito:', error);
       });
   }
 
@@ -880,6 +931,10 @@ async function updatePay(dataP, idPay) {
         const diferencia2=Math.abs(today-fechaCredito);
         const diferenciaDias2 = Math.ceil(diferencia2 / (1000 * 60 * 60 * 24));
         const condicion2=diferencia2-data.timeCredit;
+
+        console.log("Credit: "+data.id);
+        console.log("último pago:  "+dateLastPay+ " /Dif días:  "+diferenciaDias);
+        console.log("Fecha Crédito:  " +fechaCredito+ "/Dif días 2:  "+diferenciaDias2);
 
         
         if(condicion > 5 && data.creditStatus!="slowPayer" && data.creditStatus!="expired"){
