@@ -50,6 +50,20 @@ exports.getZone = onDocumentCreated("/customers/{id}", async (event) => {
 /**
  * Update Customer
  */
+exports.updateCustomer = onDocumentUpdated("/customers/{id}", async (event) => {
+    console.log('actualizando customer');
+    const customerData =event.data.after.data();
+    const customerDataBf =event.data.before.data();
+    if (customerData.address.address1.lat != customerDataBf.address.address1.lat || customerData.address.address1.lon != customerDataBf.address.address1.lon) {
+        getZoneByCustomer(customerData).then(zoneCustomer => {
+            console.log('Zona del customer:' + customerData.id + '::' + zoneCustomer);
+            customerData.zone = zoneCustomer;
+            saveCustomer(customerData).then(() => {
+                updateZoneCreditsTasks(customer.id, customer.zone, customer.activeCredits);
+            });
+        });
+    }
+});
 
 /**
  * Update zones for all customers
