@@ -170,7 +170,7 @@ function getZonesData() {
  */
 function getZoneByCustomer(customer) {
     return new Promise((resolve, reject) => {
-        getZonesData.then(zones => {
+        getZonesData().then(zones => {
             polygonZones = getPolygonMapByZones(zones);
             zone = -1;
             for (var i = 0; i < polygonZones.length; i++) {
