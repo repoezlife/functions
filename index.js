@@ -112,7 +112,7 @@ function updateZoneForCustomer(customer, polygonZones) {
 /**
  * Return zones data
  */
-/* const getZonesData = new Promise((resolve, reject) => {
+const getZonesData = new Promise((resolve, reject) => {
     console.log('buscando zonas...');
     const refZones = admin.firestore().collection(ZONE_COLLECTION_NAME);
     refZones.get().then(zonesSnapshot => {
@@ -128,8 +128,8 @@ function updateZoneForCustomer(customer, polygonZones) {
         resolve(zones);
     });
 });
- */
-function getZonesData() {
+
+/* function getZonesData() {
     return new Promise((resolve, reject) => {
         console.log('buscando zonas...');
         const refZones = admin.firestore().collection(ZONE_COLLECTION_NAME);
@@ -146,7 +146,7 @@ function getZonesData() {
         });
     });
 }
-
+ */
 /**
  * Get Zone By customer
  */
@@ -739,7 +739,7 @@ exports.createPay = onDocumentCreated("/payments/{idPay}", (event) => {
 
 console.log(" Abono a crédito:  "+idCredit +"  Con pago de id:    "+idPay);
 console.log(" Llamado Funcióncon Type:  "+type +"  valor CreditCommissionPayMediium:    "+creditCommissionPaymentMedium);
-console.log("Información que llega del abono /n:   "+data);
+//console.log("Información que llega del abono /n:   "+data);
 
     let utilityPart=0;
     let capitalPart=0;
@@ -882,15 +882,7 @@ async function updatePay(dataP, idPay) {
       });
    }
  /* */
-  async function updateCredit(dataCred, idCredit) {
-    const creditRef = admin.firestore().collection("credits").doc(idCredit+"");
-    await creditRef.update(dataCred).then(() => {
-        console.log(idCredit + '  Credito actualizado exitosamente. ' + dataCred);
-      })
-      .catch((error) => {
-        console.error(idCredit+ '  Error al actualizar el credito:', error);
-      });
-  }
+ 
   async function registerPayCommission(dataP, idPay) {
     await admin.firestore().collection('payments').doc(idPay).set(dataP);
  //   await admin.firestore().collection('payments').doc(date+"").collection("payments").doc(idPay+"").set(dataP);
@@ -921,39 +913,71 @@ async function updatePay(dataP, idPay) {
                wayPay=30; 
             break;
         }
-        const dateLastPay = new Date(data.dateLastPay);
-        const today =new Date(formatoFecha());
-        const diferencia=Math.abs(today-dateLastPay);
-        const diferenciaDias = Math.ceil(diferencia / (1000 * 60 * 60 * 24));
-        const condicion=diferenciaDias-wayPay;
+        const dlp= data.dateLastPay;
+        console.log("Credit: "+data.id);
+        const today =new Date(formatoFecha3());
+        console.log("DateLastPay  "+ dlp);
 
-        const fechaCredito=new Date(data.date);
+        if(dlp != null){
+            const dateLastPay = parseFecha(data.dateLastPay);
+            
+            const diferencia=Math.abs(today-dateLastPay);
+            const diferenciaDias = Math.ceil(diferencia / (1000 * 60 * 60 * 24));
+            const condicion=diferenciaDias-wayPay;
+
+            console.log( "Hoy:  "+today+ " /Dif días 1:  "
+                +diferenciaDias + " wayPay: "+wayPay+ " /condición :  "+condicion); 
+
+            if(condicion > 5 && data.creditStatus!="slowPayer" && data.creditStatus!="expired"){
+                const dataCredit={
+                    creditStatus:"slowPayer"
+                }
+                console.log("último pago:  "+dateLastPay+ " /Dif días:  "+diferenciaDias);
+                console.log("slowPayer");
+                updateCredit(dataCredit, data.id);                            
+            }
+
+        }
+        
+
+        const fechaCredito=parseFecha(data.date);
         const diferencia2=Math.abs(today-fechaCredito);
         const diferenciaDias2 = Math.ceil(diferencia2 / (1000 * 60 * 60 * 24));
-        const condicion2=diferencia2-data.timeCredit;
-
-        console.log("Credit: "+data.id);
-        console.log("último pago:  "+dateLastPay+ " /Dif días:  "+diferenciaDias);
-        console.log("Fecha Crédito:  " +fechaCredito+ "/Dif días 2:  "+diferenciaDias2);
-
+        const condicion2=diferenciaDias2-(data.timeCredit*1);        
         
-        if(condicion > 5 && data.creditStatus!="slowPayer" && data.creditStatus!="expired"){
-            const dataCredit={
-                creditStatus:"slowPayer"
-            }
-            updateCredit(dataCredit, data.idCredit);
-                        
-        }
-        else if(condicion2>=1 && data.creditStatus!="expired"){
+        console.log("Fecha Crédito:  " +fechaCredito+ "/Hoy:  "+today+ " /Dif días 2:  "
+            +diferenciaDias2 + " /Tiempo crédito: "+data.timeCredit+ " /condición 2:  "+condicion2);  
+        
+        
+        if(condicion2>=1 && data.creditStatus!="expired"){
             const dataCredit={
                 creditStatus:"expired"
             }
-            updateCredit(dataCredit, data.idCredit);
+            updateCredit(dataCredit, data.id);
+            console.log("expired");
         }
+   
 
       });  
   
 });
+
+function parseFecha(fechaString) {
+    const partes = fechaString.split('-');
+    const dia = parseInt(partes[0], 10);
+    const mes = parseInt(partes[1], 10) - 1;
+    const anio = parseInt(partes[2], 10);
+
+    return new Date(anio, mes, dia);
+}
+
+function formatoFecha3() {
+  const date = new Date();
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
 
 
 exports.deletePay = onDocumentDeleted("/payments/{idPay}", (event) => {
@@ -1187,11 +1211,100 @@ async function updateZoneCreditsTasks(idCustomer, zona, activeCredits){
     } else {
         console.log('No se encontraron creditos a nombre de '+idCustomer);
         return;
-    }
-    
+    }   
 
 }
 
+async function updateCredit(dataCred, idCredit) {
+    const creditRef = admin.firestore().collection("credits").doc(idCredit+"");
+    await creditRef.update(dataCred).then(() => {
+        console.log(idCredit + '  Credito actualizado exitosamente. ' + dataCred);
+      })
+      .catch((error) => {
+        console.error(idCredit+ '  Error al actualizar el credito:', error);
+      });
+  }
+
+  exports.createTasks = onRequest(async (request, response) => {
+    const refCredits = admin.firestore().collection("credits").where("creditStatus", "!=", "finished");
+    const snapshot = await refCredits.get();
+    if (snapshot.empty) {
+        console.log('No matching documents.');
+        response.status(200).send('No matching documents.');
+        return;
+    }
+
+    let batch = admin.firestore().batch();
+    let cont = 0;
+    const BATCH_LIMIT = 100;
+
+    for (const doc of snapshot.docs) {
+        cont += 1; 
+       
+
+        const data = doc.data();
+        const idCredit = data.id || '';
+        const idTask = data.idTask || '';
+        const dateTask = data.nextPay; // Puedes ajustar este valor según sea necesario
+
+        // Validaciones de valores
+        if (!idCredit || !idTask || !dateTask) {
+            console.error(`Invalid data: idCredit=${idCredit}, idTask=${idTask}, dateTask=${dateTask}`);
+            continue; // Salta este ciclo si algún valor es inválido
+        }
+
+
+        const refNewTask = admin.firestore().collection("tasks").doc(dateTask).collection("tasks").doc(idTask);
+
+       // console.log("idCredit: " + idCredit + "  -  idTask: " + idTask);
+
+        const dataNewTask = {
+            id: idTask,
+            date: data.nextPay,
+            idCredit: idCredit,
+            idCustomer: data.customerId,
+            address: data.address,
+            dateChange: null,
+            lat: data.lat,
+            lon: data.lon,
+            type: "creditToCollect",
+            idUser: "123123",
+            phone: data.cellphone,
+            zone: data.zone,
+            name: data.name,
+            lastName: data.lastName,
+            idVisit: null,
+            stateTask: "pending",
+            userWhoModified: null,
+            creditStatus: data.creditStatus
+        };
+      //  console.log(dataNewTask);
+
+        batch.set(refNewTask, dataNewTask);
+
+        if (cont >= BATCH_LIMIT) {
+            console.log('Ingreso al IF  cont === 100');
+            await batch.commit().then(() => {
+                console.log('Commit del lote exitoso');
+                batch = admin.firestore().batch();
+                cont = 0;
+            }).catch(error => {
+                console.error('Error al hacer el commit del lote:', error);
+            });
+        }
+    }
+
+    if (cont > 0) {
+        console.log('Ingreso al IF  cont > 0');
+        await batch.commit().then(() => {
+            console.log('Commit del lote exitoso');
+        }).catch(error => {
+            console.error('Error al hacer el commit del lote:', error);
+        });
+    }
+
+    response.status(200).send('Tareas creadas exitosamente.');
+});
 
 
 /* 
