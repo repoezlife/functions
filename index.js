@@ -57,6 +57,233 @@ exports.todayDistributeTasks = onRequest(async (request, response) => {
     response.status(200).send('Distribución OK');
 });
 
+<<<<<<< HEAD
+=======
+/**
+ * Update Customer
+ */
+exports.updateCustomer = onDocumentUpdated("/customers/{id}", async (event) => {
+    console.log('actualizando customer');
+    const customerData =event.data.after.data();
+    const customerDataBf =event.data.before.data();
+    if (customerData.zone != customerDataBf.zone) {
+        updateZoneCreditsTasks(customerData.id, customerData.zone, customerData.activeCredits);
+    }
+    if (customerData.address.address1.lat != customerDataBf.address.address1.lat 
+        || customerData.address.address1.lon != customerDataBf.address.address1.lon) {
+        getZoneByCustomer(customerData).then(zoneCustomer => {
+            console.log('Zona del customer:' + customerData.id + '::' + zoneCustomer);
+            customerData.zone = zoneCustomer;
+            saveCustomer(customerData).then(() => {
+                updateZoneCreditsTasks(customerData.id, customerData.zone, customerData.activeCredits);
+            });
+        });
+    }
+});
+
+/**
+ * Update zones for all customers
+ * 
+ */
+
+exports.updateZoneForCustomers = onRequest(async (request, response) => {
+    try {
+        let responseMessage = '';
+        //Get Map Polygon from Zones
+        const refZones = admin.firestore().collection(ZONE_COLLECTION_NAME);
+        const zonesSnapshot = await refZones.get();
+        if (zonesSnapshot.empty) {
+            let responseMessage = 'No matching documents in Zones.';
+            console.log(responseMessage);
+            response.status(200).send(responseMessage);
+        }
+        let zones = [];
+        zonesSnapshot.forEach(zoneData => {
+            zones.push(zoneData.data());
+        });
+        polygonZones = getPolygonMapByZones(zones);
+        //Get All Customer
+        const refCustomers = admin.firestore().collection(CUSTOMERS_COLLECTION_NAME);
+        const customerSnapshot = await refCustomers.get();
+        if (customerSnapshot.empty) {
+            responseMessage = 'No matching documents in Customers.';
+            response.status(200).send(responseMessage);
+        }
+        let customers = [];
+        customerSnapshot.forEach(customerData => {
+            customers.push(customerData.data());
+        });
+        //Update Zones
+        customers.map(customer => {
+            updateZoneForCustomer(customer, polygonZones);
+        });
+        saveMultipleCustomer(customers);
+        responseMessage = 'Clientes actualizando correctamente';
+        response.status(200).send(responseMessage);
+    } catch (e) {
+        console.log('Error: ', e);
+    }
+});
+
+/**
+ * Update Zone for Customer
+ */
+function updateZoneForCustomer(customer, polygonZones) {
+    for (var i = 0; i < polygonZones.length; i++) {
+        if(verifyZone([customer.address.address1.lat, customer.address.address1.lon], polygonZones[i].points)) {
+            customer.zone = polygonZones[i].zonePosition;
+            return customer;
+        }
+    }
+    customer.zone = -1;
+    return customer;
+}
+
+/**
+ * Return zones data
+ */
+/* const getZonesData = new Promise((resolve, reject) => {
+    console.log('buscando zonas...');
+    const refZones = admin.firestore().collection(ZONE_COLLECTION_NAME);
+    refZones.get().then(zonesSnapshot => {
+        if (zonesSnapshot.empty) {
+            let responseMessage = 'No matching documents in Zones.';
+            console.log(responseMessage);
+        }
+        let zones = [];
+        zonesSnapshot.forEach(zoneData => {
+            zones.push(zoneData.data());
+        });
+        console.log(zones);
+        resolve(zones);
+    });
+});
+ */
+function getZonesData() {
+    return new Promise((resolve, reject) => {
+        console.log('buscando zonas...');
+        const refZones = admin.firestore().collection(ZONE_COLLECTION_NAME);
+        refZones.get().then(zonesSnapshot => {
+            if (zonesSnapshot.empty) {
+                let responseMessage = 'No matching documents in Zones.';
+                console.log(responseMessage);
+            }
+            let zones = [];
+            zonesSnapshot.forEach(zoneData => {
+                zones.push(zoneData.data());
+            });
+            resolve(zones);
+        });
+    });
+}
+
+/**
+ * Get Zone By customer
+ */
+function getZoneByCustomer(customer) {
+    return new Promise((resolve, reject) => {
+        getZonesData().then(zones => {
+            polygonZones = getPolygonMapByZones(zones);
+            zone = -1;
+            for (var i = 0; i < polygonZones.length; i++) {
+                if(verifyZone([customer.address.address1.lat, customer.address.address1.lon], polygonZones[i].points)) {
+                    zone = polygonZones[i].zonePosition;
+                    break;
+                }
+            }
+            resolve(zone);
+        });
+    });
+}
+
+/**
+ * 
+ */
+async function saveMultipleCustomer(customerList) {
+    const pomises = [];
+    customerList.forEach(customer => {
+        pomises.push(saveCustomer(customer));
+    });
+    const dataloaded = await Promise.all(pomises);
+}
+
+/**
+ * Save Customer in database 
+ * @param {any} customer element customer of database
+ */
+async function saveCustomer(customer) {
+    try {
+        console.log('actualizando cliente...' + customer.id + ' :: ' + customer.zone);
+        return await admin.firestore().collection(CUSTOMERS_COLLECTION_NAME).doc(customer.id).set(customer);
+    } catch (err) {
+        console.log('el error con ci:' + customer.id);
+        console.log(err);
+    }
+}
+
+/**
+ * Verify Zone for Customer
+ * @param {array} customerCoords array [lat, lon]
+ * @param {array} zonePolygon array [[lat, lon],[...],...]
+ */
+function verifyZone(customerCoords, zonePolygon) {
+    return pointInPolygon(customerCoords, zonePolygon);
+}
+
+/**
+ * Get Polygon Map By Zone or all Zones
+ * @param {Array} zones array of zones
+ * @return {Array} return array of polygon zones
+ */
+function getPolygonMapByZones(zones) {
+    let result = [];
+    if(zones.length == 0) {
+        return result;
+    }
+    result = zones.map(zone => {
+        return {
+            zonePosition : zone.position,
+            points : zone.polygon.map(polygonPoint => [polygonPoint.lat, polygonPoint.lng])
+        };
+    });
+    return result;
+}
+
+function formatoFecha() {
+    const fecha = new Date();
+    const zonaHoraria = 'America/Bogota';
+    const opciones = {
+    timeZone: zonaHoraria,
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric'
+    };    
+    const formatoFecha= new Intl.DateTimeFormat('en-ES', opciones).format(fecha);
+    const [mes, dia, anio] = formatoFecha.split('/');
+    const formatoFechaModificado = `${dia}-${mes}-${anio}`;   
+    return formatoFechaModificado;
+}
+function formatoFecha2() {
+    const fecha = new Date();
+    const zonaHoraria = 'America/Bogota';
+    const opciones = {
+    timeZone: zonaHoraria,
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric'
+    };    
+    const formatoFecha= new Intl.DateTimeFormat('en-ES', opciones).format(fecha);
+    const nuevaFecha = new Date(formatoFecha);
+    nuevaFecha.setDate(nuevaFecha.getDate() + 1);
+
+    const dia = nuevaFecha.getDate().toString().padStart(2, '0');
+    const mes = (nuevaFecha.getMonth() + 1).toString().padStart(2, '0');
+    const anio = nuevaFecha.getFullYear();
+
+    const formatoFechaModificado = `${dia}-${mes}-${anio}`;   
+    return formatoFechaModificado;
+}
+>>>>>>> b9b3437c72dfbf0b8d8061b2d4f0829e737a50c4
 exports.distributeTasks = onSchedule(
     {schedule: 'every day 23:30',
     timeZone: 'America/Bogota', },
