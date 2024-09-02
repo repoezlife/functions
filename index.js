@@ -1119,7 +1119,7 @@ exports.updateZoneForCustomers = onRequest(async (request, response) => {
     try {
         let responseMessage = '';
         //Get Map Polygon from Zones
-        const refZones = admin.firestore().collection(ZONE_COLLECTION_NAME);
+        const refZones = admin.firestore().collection(COLLECTION_ZONE);
         const zonesSnapshot = await refZones.get();
         if (zonesSnapshot.empty) {
             let responseMessage = 'No matching documents in Zones.';
@@ -1391,7 +1391,7 @@ function formatoFecha3() {
  */
 const getZonesData = new Promise((resolve, reject) => {
     console.log('buscando zonas...');
-    const refZones = admin.firestore().collection(ZONE_COLLECTION_NAME);
+    const refZones = admin.firestore().collection(COLLECTION_ZONE);
     refZones.get().then(zonesSnapshot => {
         if (zonesSnapshot.empty) {
             let responseMessage = 'No matching documents in Zones.';
