@@ -961,43 +961,59 @@ exports.deleteTasksRepeters = onRequest(async (request, response) => {
     
         if (snapshot.empty) {
           console.log('No tasks found.');
-          res.status(200).send('No tasks found.');
+          response.status(200).send('No tasks found.');
           return;
         }
+
+      
     
         // Mapear tasks agrupadas por idCredit
         const tasksByCredit = {};
         snapshot.forEach(doc => {
           const data = doc.data();
           const idCredit = data.idCredit;
-    
-          if (tasksByCredit[idCredit]) {
-            tasksByCredit[idCredit].push(doc.id); // Guardamos la taskId
-          } else {
-            tasksByCredit[idCredit] = [doc.id];
-          }
-        });
+          const typeTask=data.type;
+
+              
+            // Asegurarse de que solo procesamos tasks de tipo "creditToCollect"
+            if (typeTask === "creditToCollect") {
+                if (tasksByCredit[idCredit]) {
+                    tasksByCredit[idCredit].push(doc.id); // Guardamos la taskId
+                } else {
+                    tasksByCredit[idCredit] = [doc.id];
+                }
+            }
+         });
     
         // Identificar y eliminar las duplicadas
         let batch = admin.firestore().batch();
         let countDeleted = 0;
     
         for (const [idCredit, taskIds] of Object.entries(tasksByCredit)) {
+
           if (taskIds.length > 1) {
+            console.log("id del créditp: "+idCredit);
+
             // Mantener solo una task (la primera) y eliminar las demás           
 
             const taskToKeep = taskIds[0]; // Puedes cambiar esta lógica si necesitas otra task a mantener
+            console.log("tarea a mantener: "+taskToKeep);
             const tasksToDelete = taskIds.slice(1); // Tareas a eliminar (duplicadas)
     
             for (const taskId of tasksToDelete) {
-              console.log(taskId);
+              console.log("Tarea a eliminar: "+taskId);
               const taskRef = refTasks.doc(taskId);
-        //      batch.delete(taskRef);
-        //      countDeleted++;
+              const creditRef = admin.firestore().collection(COLLECTION_CREDITS).doc(idCredit);
+              const dataCredit={
+                    idTask:taskToKeep
+              };
+              batch.update(creditRef,dataCredit);
+              batch.delete(taskRef);
+              countDeleted++;
             }
     
             // Cometer el batch cada 500 eliminaciones por seguridad
-            if (countDeleted >= 500) {
+            if (countDeleted >= 200) {
               await batch.commit();
               batch = admin.firestore().batch();
               countDeleted = 0;
@@ -1010,7 +1026,7 @@ exports.deleteTasksRepeters = onRequest(async (request, response) => {
           await batch.commit();
         }
     
-        res.status(200).send('Duplicate tasks removed successfully.');
+        response.status(200).send('Duplicate tasks removed successfully.');
       } catch (error) {
         console.error('Error removing duplicate tasks:', error);
         response.status(500).send('Error removing duplicate tasks.');
