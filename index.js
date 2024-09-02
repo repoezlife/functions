@@ -795,6 +795,113 @@ async function registerPayCommission(dataP, idPay) {
 }
 
 // Reg: Credits Events Functions ---------------------------------------------------------
+exports.reviewDateCredits = onRequest(async (request, response) => {
+    try {
+        const refCredits = admin.firestore().collection("credits").where("creditStatus", "!=", "finished");
+        const snapshot = await refCredits.get();
+        let batch = admin.firestore().batch();
+
+        if (snapshot.empty) {
+            console.log('No matching documents.');
+            return response.status(200).send('No matching documents.');
+        }
+        const overdueCredits = [];
+
+        snapshot.forEach(doc => {
+            const data = doc.data();
+            const nextPay = parseFecha(data.nextPay);
+            const hoy = parseFecha(formatoFecha());
+            const tomorrow = (formatoFecha2());
+
+            if (nextPay < hoy) {
+                overdueCredits.push(data.name +" "+data.lastName+"/"+data.id); // Agregar a la lista de créditos vencidos
+                const idTask=data.id+"P";
+
+                if(data.creditStatus == "pending"){
+                    const dataNewTask={
+                        id:idTask,
+                        date: tomorrow,
+                        idCredit: data.id,
+                        address: data.address,
+                        dateChange: null,
+                        lat: data.lat,
+                        lon: data.lon,
+                        type: "creditToDisburse",
+                        idUser: "1061706410",
+                        phone: data.cellphone,
+                        zone:data.zone,
+                        name: data.name,
+                        lastName:data.lastName,
+                        idVisit: null,
+                        stateTask: "pending",
+                        userWhoModified:null,
+                        creditStatus:data.creditStatus,
+                        valueDisburse:data.value
+                    }    
+                    const refNewTask= admin.firestore().collection("tasks").doc(tomorrow+"").collection("tasks").doc(idTask);
+                    batch.set(refNewTask, dataNewTask);
+                    const dataCredit={                
+                        nextPay: tomorrow,
+                        idTask: idTask                
+                    } 
+                    const refUCredit= admin.firestore().collection("credits").doc(data.id);
+                    batch.update(refUCredit, dataCredit);
+
+                }
+                else{
+                    const dataNewTask={
+                        id:idTask,
+                        date: tomorrow,
+                        idCredit: data.id,
+                        address: data.address,
+                        dateChange: null,
+                        lat: data.lat,
+                        lon: data.lon,
+                        type: "creditToCollect",
+                        idUser: "1061706410",
+                        phone: data.cellphone,
+                        zone:data.zone,
+                        name: data.name,
+                        lastName:data.lastName,
+                        idVisit: null,
+                        stateTask: "pending",
+                        userWhoModified:null,
+                        creditStatus:data.creditStatus,
+                        valueDisburse:null
+                    }    
+                    const refNewTask= admin.firestore().collection("tasks").doc(tomorrow+"").collection("tasks").doc(idTask);
+                    batch.set(refNewTask, dataNewTask);
+                    const dataCredit={                
+                        nextPay: tomorrow,
+                        idTask: idTask                
+                    } 
+                    const refUCredit= admin.firestore().collection("credits").doc(data.id);
+                    batch.update(refUCredit, dataCredit);
+                }          
+
+            }
+        });
+        await batch.commit().then(() => {
+            console.log('Commit del lote exitoso');
+            batch = admin.firestore().batch();            
+        }).catch(error => {
+            console.error('Error al hacer el commit del lote:', error);
+        });
+
+        // Enviar todos los créditos vencidos en la respuesta
+        if (overdueCredits.length > 0) {
+            response.status(200).send(overdueCredits);
+        } else {
+            response.status(200).send('No overdue credits found.');
+        }
+
+    } catch (error) {
+        console.error('Error reviewing credits:', error);
+        response.status(500).send('Error reviewing credits.');
+    }
+});
+
+
 exports.updateStateCredits = onSchedule(
     {schedule: 'every day 05:30',
     timeZone: 'America/Bogota', },
@@ -807,7 +914,7 @@ exports.updateStateCredits = onSchedule(
         console.log('No matching documents.');
         return;
       }        
-      snapshot.forEach(doc => {
+    snapshot.forEach(doc => {
         const data=doc.data();
         switch(data.wayPay){
             case "weekly":
@@ -949,6 +1056,10 @@ async function updateCredit(dataCred, idCredit) {
         console.error(idCredit + '  Error al actualizar el credito:', error);
     });
 }
+
+
+
+
 
 // Reg: Tasks Events Functions ---------------------------------------------------------
 
