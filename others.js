@@ -534,3 +534,296 @@ exports.distributeTasks = onSchedule(
 
 
  */
+
+exports.todayDistributeTasks = onRequest(async (request, response) => {
+
+    let band=true;
+    let nCobs=0;
+    let nTasks=0;
+    const idCobs = [];
+    const idTasks = [];
+    let factor1=0;
+    let factor2=0;
+    let residuo=0;
+    let idSpRoute="";
+    let nCll=0;
+    let batch = admin.firestore().batch();
+    let tomorrow= formatoFecha2();
+    let today= formatoFecha();
+
+    const refConfig= admin.firestore().collection("settings").doc("specialRoute");
+    const snp= await refConfig.get();
+    if (!snp.empty) {
+        const x=snp.data();
+        idSpRoute=x.idUser;
+        nCll=Number(x.collections);        
+    }
+    console.log(idSpRoute+":  "+nCll);
+
+    const refTasks= admin.firestore().collection("tasks").doc(today+"").collection("tasks");
+    const snapshot = await refTasks.orderBy("zone", "asc").get();
+    if (!snapshot.empty) {
+        
+        snapshot.forEach(doc => {
+            const f=doc.data();
+            console.log(f);
+            if(f.stateTask === 'pending'){
+                idTasks.push(doc.id);
+            }
+            
+          });
+          nTasks=idTasks.length;
+    }
+    else{
+        console.log('No hay tareas para '+today);
+        band=false;
+    }
+    if(band){
+        const refUsers=admin.firestore().collection("users");
+        const cobs=await refUsers.where('role.code', "==","COB").orderBy("cobPosition", "asc").get();
+        
+        if (!cobs.empty) {
+            cobs.forEach(doc => {
+                if(doc.id != idSpRoute){
+                    idCobs.push(doc.id);
+                }
+                
+            });
+            idCobs.push(idSpRoute);
+            console.log(idCobs);
+            nCobs = (idCobs).length;
+        } else {
+            console.log('No se encontraron documentos con role.code igual a "COB".');
+            return;
+        }
+        const taskDistribuir=nTasks-nCll;
+        let nTareasEq=Math.floor(taskDistribuir / (nCobs-1));
+        let nTareasResiduales=taskDistribuir % (nCobs-1);
+        let nTareasRutaEspecial=nCll+nTareasResiduales;
+
+        console.log("# Tareas: "+nTasks+"  NCobs: "+nCobs);
+
+        factor1=Math.floor(nTasks / nCobs);
+        factor2=factor1*nCobs;
+        residuo=nTasks % nCobs;
+        let cont=0;
+        let u=0;
+        let contBatch=0;
+
+        for(let i=0; i<(nCobs-1) ;i++){
+            cont++;
+
+            for(u; u<(cont*nTareasEq);u++){
+                const ref=refTasks.doc(idTasks[u]+"");
+                const dataT={
+                    idUser:idCobs[i]
+                }
+                batch.update(ref, dataT);
+                contBatch++;
+                console.log(u+". "+idTasks[u]+ "  "+idCobs[i] +"  i:"+i);
+            }
+     
+            if(contBatch>=500){
+                console.log('Ingreso al IF  cont=== 500');
+                    await batch.commit()
+                        .then(() => {
+                        console.log('Commit del lote exitoso');
+                        batch = admin.firestore().batch();
+                        contBatch=0;
+
+                    })
+                    .catch(error => {
+                        console.error('Error al hacer el commit del lote:', error);
+                    });                
+            }          
+        } 
+        for(u; u<nTasks;u++){
+
+           // console.log("Ingreso último for, U: "+ u);
+            const ref=refTasks.doc(idTasks[u]+"");
+            const dataT={
+                idUser:idCobs[nCobs-1]
+            }
+            batch.update(ref, dataT);
+            contBatch++;
+            console.log(u+". "+idTasks[u]+ "  "+idCobs[nCobs-1] );
+
+            if(contBatch>=500){
+                console.log('Ingreso al IF  cont=== 500');
+                    await batch.commit()
+                        .then(() => {
+                        console.log('Commit del lote exitoso');
+                        batch = admin.firestore().batch();
+                        contBatch=0;
+
+                    })
+                    .catch(error => {
+                        console.error('Error al hacer el commit del lote:', error);
+                    });                
+            }    
+
+        }    
+
+        if(contBatch>0){
+            console.log('Ingreso al IF  cont > 0');
+                    await batch.commit()
+                        .then(() => {
+                        console.log('Commit del lote exitoso');
+                        batch = admin.firestore().batch();
+                        contBatch=0;
+
+                    })
+                    .catch(error => {
+                        console.error('Error al hacer el commit del lote:', error);
+                    });
+        }
+    }
+    return
+});
+
+exports.distributeTasks = onSchedule(
+    {schedule: 'every day 23:30',
+    timeZone: 'America/Bogota', },
+     async (event) => {
+
+    let band=true;
+    let nCobs=0;
+    let nTasks=0;
+    const idCobs = [];
+    const idTasks = [];
+    let factor1=0;
+    let factor2=0;
+    let residuo=0;
+    let batch = admin.firestore().batch();
+    let tomorrow= formatoFecha2();
+   
+
+    const refConfig= admin.firestore().collection("settings").doc("specialRoute");
+    const snp= await refConfig.get();
+    if (!snp.empty) {
+        const x=snp.data();
+        idSpRoute=x.idUser;
+        nCll=Number(x.collections);        
+    }
+    console.log(idSpRoute+":  "+nCll);
+
+    const refTasks= admin.firestore().collection("tasks").doc(tomorrow+"").collection("tasks");
+    const snapshot = await refTasks.orderBy("zone", "asc").get();
+    if (!snapshot.empty) {
+        
+        snapshot.forEach(doc => {
+            const f=doc.data();
+            console.log(f);
+            if(f.stateTask === 'pending'){
+                idTasks.push(doc.id);
+            }
+            
+          });
+          nTasks=idTasks.length;
+    }
+    else{
+        console.log('No hay tareas para '+today);
+        band=false;
+    }
+    if(band){
+        const refUsers=admin.firestore().collection("users");
+        const cobs=await refUsers.where('role.code', "==","COB").get();
+        
+        if (!cobs.empty) {
+            cobs.forEach(doc => {
+                if(doc.id != idSpRoute){
+                    idCobs.push(doc.id);
+                }
+                
+            });
+            idCobs.push(idSpRoute);
+            console.log(idCobs);
+            nCobs = (idCobs).length;
+        } else {
+            console.log('No se encontraron documentos con role.code igual a "COB".');
+            return;
+        }
+        const taskDistribuir=nTasks-nCll;
+        let nTareasEq=Math.floor(taskDistribuir / (nCobs-1));
+        let nTareasResiduales=taskDistribuir % (nCobs-1);
+        let nTareasRutaEspecial=nCll+nTareasResiduales;
+
+        console.log("# Tareas: "+nTasks+"  NCobs: "+nCobs);
+
+        factor1=Math.floor(nTasks / nCobs);
+        factor2=factor1*nCobs;
+        residuo=nTasks % nCobs;
+        let cont=0;
+        let u=0;
+        let contBatch=0;
+
+        for(let i=0; i<(nCobs-1) ;i++){
+            cont++;            
+            for(u; u<(cont*nTareasEq);u++){
+                const ref=refTasks.doc(idTasks[u]+"");
+                const dataT={
+                    idUser:idCobs[i]
+                }
+                batch.update(ref, dataT);
+                contBatch++;
+                console.log(u+". "+idTasks[u]+ "  "+idCobs[i] +"  i:"+i);
+            }
+     
+            if(contBatch>=500){
+                console.log('Ingreso al IF  cont=== 500');
+                    await batch.commit()
+                        .then(() => {
+                        console.log('Commit del lote exitoso');
+                        batch = admin.firestore().batch();
+                        contBatch=0;
+
+                    })
+                    .catch(error => {
+                        console.error('Error al hacer el commit del lote:', error);
+                    });                
+            }          
+        } 
+        for(u; u<nTasks;u++){
+
+           // console.log("Ingreso último for, U: "+ u);
+            const ref=refTasks.doc(idTasks[u]+"");
+            const dataT={
+                idUser:idCobs[nCobs-1]
+            }
+            batch.update(ref, dataT);
+            contBatch++;
+            console.log(u+". "+idTasks[u]+ "  "+idCobs[nCobs-1] );
+
+            if(contBatch>=500){
+                console.log('Ingreso al IF  cont=== 500');
+                    await batch.commit()
+                        .then(() => {
+                        console.log('Commit del lote exitoso');
+                        batch = admin.firestore().batch();
+                        contBatch=0;
+
+                    })
+                    .catch(error => {
+                        console.error('Error al hacer el commit del lote:', error);
+                    });                
+            }    
+
+        }    
+
+        if(contBatch>0){
+            console.log('Ingreso al IF  cont > 0');
+                    await batch.commit()
+                        .then(() => {
+                        console.log('Commit del lote exitoso');
+                        batch = admin.firestore().batch();
+                        contBatch=0;
+
+                    })
+                    .catch(error => {
+                        console.error('Error al hacer el commit del lote:', error);
+                    });
+        }
+    }  
+      //  response("Actualización OK");
+    
+});
