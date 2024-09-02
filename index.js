@@ -951,6 +951,73 @@ async function updateCredit(dataCred, idCredit) {
 }
 
 // Reg: Tasks Events Functions ---------------------------------------------------------
+
+exports.deleteTasksRepeters = onRequest(async (request, response) => {
+    try {
+        // Obtener todas las tareas desde Firestore
+        const mañana=formatoFecha();
+        const refTasks = admin.firestore().collection(COLLECTION_TASKS).doc(mañana).collection(COLLECTION_TASKS);
+        const snapshot = await refTasks.where("stateTask","==","pending").get();
+    
+        if (snapshot.empty) {
+          console.log('No tasks found.');
+          res.status(200).send('No tasks found.');
+          return;
+        }
+    
+        // Mapear tasks agrupadas por idCredit
+        const tasksByCredit = {};
+        snapshot.forEach(doc => {
+          const data = doc.data();
+          const idCredit = data.idCredit;
+    
+          if (tasksByCredit[idCredit]) {
+            tasksByCredit[idCredit].push(doc.id); // Guardamos la taskId
+          } else {
+            tasksByCredit[idCredit] = [doc.id];
+          }
+        });
+    
+        // Identificar y eliminar las duplicadas
+        let batch = admin.firestore().batch();
+        let countDeleted = 0;
+    
+        for (const [idCredit, taskIds] of Object.entries(tasksByCredit)) {
+          if (taskIds.length > 1) {
+            // Mantener solo una task (la primera) y eliminar las demás           
+
+            const taskToKeep = taskIds[0]; // Puedes cambiar esta lógica si necesitas otra task a mantener
+            const tasksToDelete = taskIds.slice(1); // Tareas a eliminar (duplicadas)
+    
+            for (const taskId of tasksToDelete) {
+              console.log(taskId);
+              const taskRef = refTasks.doc(taskId);
+        //      batch.delete(taskRef);
+        //      countDeleted++;
+            }
+    
+            // Cometer el batch cada 500 eliminaciones por seguridad
+            if (countDeleted >= 500) {
+              await batch.commit();
+              batch = admin.firestore().batch();
+              countDeleted = 0;
+            }
+          }
+        }
+    
+        // Cometer el último batch si hay eliminaciones pendientes
+        if (countDeleted > 0) {
+          await batch.commit();
+        }
+    
+        res.status(200).send('Duplicate tasks removed successfully.');
+      } catch (error) {
+        console.error('Error removing duplicate tasks:', error);
+        response.status(500).send('Error removing duplicate tasks.');
+      }
+});
+
+
 exports.createTasks = onRequest(async (request, response) => {
     const refCredits = admin.firestore().collection("credits").where("creditStatus", "!=", "finished");
     const snapshot = await refCredits.get();
@@ -1119,7 +1186,7 @@ exports.updateZoneForCustomers = onRequest(async (request, response) => {
     try {
         let responseMessage = '';
         //Get Map Polygon from Zones
-        const refZones = admin.firestore().collection(ZONE_COLLECTION_NAME);
+        const refZones = admin.firestore().collection(COLLECTION_ZONE);
         const zonesSnapshot = await refZones.get();
         if (zonesSnapshot.empty) {
             let responseMessage = 'No matching documents in Zones.';
@@ -1391,7 +1458,7 @@ function formatoFecha3() {
  */
 const getZonesData = new Promise((resolve, reject) => {
     console.log('buscando zonas...');
-    const refZones = admin.firestore().collection(ZONE_COLLECTION_NAME);
+    const refZones = admin.firestore().collection(COLLECTION_ZONE);
     refZones.get().then(zonesSnapshot => {
         if (zonesSnapshot.empty) {
             let responseMessage = 'No matching documents in Zones.';
