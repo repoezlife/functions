@@ -1205,6 +1205,7 @@ async function saveMultipleCustomer(customerList) {
     });
     const dataloaded = await Promise.all(pomises);
 }
+//
 
 /**
  * Print Customers on Request
