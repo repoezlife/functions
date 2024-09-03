@@ -1050,6 +1050,54 @@ async function updateZoneCreditsTasks(idCustomer, zona, activeCredits, address, 
     }
 }
 
+async function updateCellCreditsTasks(idCustomer, cell, activeCredits){
+    console.log("Update Cell in Credits and task,  " + idCustomer + "  " + cell + "  " + activeCredits);
+    
+    const refCredits = admin.firestore().collection(COLLECTION_CREDITS);
+    const credits = await refCredits.where('customerId', "==", idCustomer).get();
+    let batch = admin.firestore().batch();
+    let cB = 0;
+
+    if (!credits.empty) {
+        //credits.forEach(async doc => {
+        for (const doc of credits.docs) {
+            if (doc.creditStatus != 'finished') {
+                const dt = doc.data();
+                console.log("UpdateCredit: " + dt.id + "  UpdateTask: " + dt.nextPay + "/" + dt.idTask);
+
+                const dataC = {
+                    cellphone: cell
+                    
+                }
+                const dataT = {
+                    phone: cell
+                    
+                }
+                const refT = admin.firestore().collection(COLLECTION_TASKS).doc(dt.nextPay).collection(COLLECTION_TASKS).doc(dt.idTask);
+                const refC = admin.firestore().collection(COLLECTION_CREDITS).doc(dt.id + "");                   
+                batch.update(refT, dataT);
+                batch.update(refC, dataC);
+                cB++;
+            } else {
+                console.log('No se encontraron creditos activos a nombre de ' + idCustomer);
+            }            
+        }
+        if (cB > 0) {
+            console.log('Ingreso al IF  cont > 0');
+            await batch.commit().then(() => {
+                console.log('Commit del lote exitoso');
+                batch = admin.firestore().batch();
+                cB = 0;
+            }).catch(error => {
+                console.error('Error al hacer el commit del lote:', error);
+            });
+        }       
+    } else {
+        console.log('No se encontraron creditos a nombre de ' + idCustomer);
+        return;
+    }
+}
+
 // Reg: Credits DB Function ---------------------------------------------------------
 /**
  * Update Credit in DB
@@ -1394,6 +1442,12 @@ exports.updateCustomer = onDocumentUpdated("/customers/{id}", async (event) => {
             });
         });
     }
+    if(customerData.cell.cell1 != customerDataBf.cell.cell1)
+        {
+            updateCellCreditsTasks(customerData.id, customerData.cell.cell1, customerData.activeCredits);
+        }  
+
+
 });
 
 /**
