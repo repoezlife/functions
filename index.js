@@ -800,6 +800,7 @@ exports.reviewDateCredits = onRequest(async (request, response) => {
         const refCredits = admin.firestore().collection("credits").where("creditStatus", "!=", "finished");
         const snapshot = await refCredits.get();
         let batch = admin.firestore().batch();
+        const hoy = parseFecha(formatoFecha());
 
         if (snapshot.empty) {
             console.log('No matching documents.');
@@ -810,7 +811,7 @@ exports.reviewDateCredits = onRequest(async (request, response) => {
         snapshot.forEach(doc => {
             const data = doc.data();
             const nextPay = parseFecha(data.nextPay);
-            const hoy = parseFecha(formatoFecha());
+            
             const tomorrow = (formatoFecha2());
 
             if (nextPay < hoy) {
@@ -892,7 +893,7 @@ exports.reviewDateCredits = onRequest(async (request, response) => {
         if (overdueCredits.length > 0) {
             response.status(200).send(overdueCredits);
         } else {
-            response.status(200).send('No overdue credits found.');
+            response.status(200).send('No hay créditos con fecha de cobro menor a  '+hoy);
         }
 
     } catch (error) {
@@ -901,69 +902,76 @@ exports.reviewDateCredits = onRequest(async (request, response) => {
     }
 });
 
-
 exports.updateStateCredits = onSchedule(
-    {schedule: 'every day 05:30',
-    timeZone: 'America/Bogota', },
-     async (event) => {
-        
-    let wayPay;
-    const refCredits= admin.firestore().collection("credits").where("creditStatus", "!=", "finished");
-    const snapshot = await refCredits.get();
-    if (snapshot.empty) {
-        console.log('No matching documents.');
-        return;
-      }        
-    snapshot.forEach(doc => {
-        const data=doc.data();
-        switch(data.wayPay){
-            case "weekly":
-               wayPay=8; 
-            break;
-            case "biweekly":
-               wayPay=15; 
-            break;
-            case "monthly":
-               wayPay=30; 
-            break;
+    {schedule: 'every day 05:30', timeZone: 'America/Bogota'},
+    async (event) => {
+        let wayPay;
+        let cont = 0;
+        let batch = admin.firestore().batch();
+        const refCredits = admin.firestore().collection("credits").where("creditStatus", "!=", "finished");
+        const snapshot = await refCredits.get();
+
+        if (snapshot.empty) {
+            console.log('No matching documents.');
+            return;
         }
-        const nextPay=data.nextPay;
-        const idTask=data.idTask;
-        const dateLastPay = parseFecha(data.dateLastPay);
-        const today =parseFecha(formatoFecha());
-        const diferencia=Math.abs(today-dateLastPay);
-        const diferenciaDias = Math.ceil(diferencia / (1000 * 60 * 60 * 24));
-        const condicion=diferenciaDias-wayPay;
 
-        const fechaCredito=parseFecha(data.date);
-        const diferencia2=Math.abs(today-fechaCredito);
-        const diferenciaDias2 = Math.ceil(diferencia2 / (1000 * 60 * 60 * 24));
-        const condicion2=diferencia2-data.timeCredit;
-
-        console.log("Credit: "+data.id);
-        console.log("último pago:  "+dateLastPay+ " /Dif días:  "+diferenciaDias);
-        console.log("Fecha Crédito:  " +fechaCredito+ "/Dif días 2:  "+diferenciaDias2);
-
-        
-        if(condicion > 5 && data.creditStatus!="slowPayer" && data.creditStatus!="expired"){
-            const dataCredit={
-                creditStatus:"slowPayer"
+        for (const doc of snapshot.docs) {
+            const data = doc.data();
+            switch(data.wayPay) {
+                case "weekly": wayPay = 8; break;
+                case "biweekly": wayPay = 15; break;
+                case "monthly": wayPay = 30; break;
+                default: wayPay = 0; // Default en caso de que `wayPay` sea inesperado
             }
-            updateCredit(dataCredit, data.id);
-            updateTask(dataCredit, idTask,nextPay);
-                        
-        }
-        else if(condicion2>=1 && data.creditStatus!="expired"){
-            const dataCredit={
-                creditStatus:"expired"
+            let dateLastPay;
+            let diferenciaDias;
+            let condicion=0;           
+            const today = parseFecha(formatoFecha());
+
+            if(data.dateLastPay){
+                dateLastPay = parseFecha(data.dateLastPay);
+                diferenciaDias = Math.ceil(Math.abs(today - dateLastPay) / (1000 * 60 * 60 * 24));
+                condicion = diferenciaDias - wayPay;
+            }             
+            
+            const fechaCredito = parseFecha(data.date);
+            const diferenciaDias2 = Math.ceil(Math.abs(today - fechaCredito) / (1000 * 60 * 60 * 24));
+            const condicion2 = diferenciaDias2 - data.timeCredit;
+
+            console.log(`Credit: ${data.id}, Último pago: ${dateLastPay}, Forma de pago: ${wayPay}, Dif días: ${diferenciaDias}`);
+            console.log(`Fecha Crédito: ${fechaCredito}, Tiempo credito: ${data.timeCredit}, Dif días 2: ${diferenciaDias2}`);
+
+            let dataCredit = null;
+            if (condicion > 5 && data.creditStatus !== "slowPayer" && data.creditStatus !== "expired") {
+                dataCredit = { creditStatus: "slowPayer" };
+            } else if (condicion2 >= 1 && data.creditStatus !== "expired") {
+                dataCredit = { creditStatus: "expired" };
             }
-            updateCredit(dataCredit, data.id);
-            updateTask(dataCredit, idTask,nextPay);
+
+            if (dataCredit) {
+                const refCre = admin.firestore().collection(COLLECTION_CREDITS).doc(data.id);
+                const refT = admin.firestore().collection(COLLECTION_TASKS).doc(data.nextPay).collection(COLLECTION_TASKS).doc(data.idTask);
+                batch.update(refCre, dataCredit);
+                batch.update(refT, dataCredit);
+                cont++;
+            }
+
+            if (cont >= 200) {
+                await batch.commit();
+                console.log('Commit del lote exitoso');
+                batch = admin.firestore().batch();
+                cont = 0;
+            }
         }
 
-      });  
-  
-});
+        if (cont > 0) {
+            await batch.commit();
+            console.log('Commit del lote final exitoso');
+        }
+    }
+);
+
 
 function parseFecha(fechaStr) {
     // Dividir la fecha en partes [día, mes, año]
