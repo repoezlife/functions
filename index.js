@@ -1189,10 +1189,6 @@ async function updateCredit(dataCred, idCredit) {
     });
 }
 
-
-
-
-
 // Reg: Tasks Events Functions ---------------------------------------------------------
 
 exports.deleteTasksRepeters = onRequest(async (request, response) => {
@@ -1206,9 +1202,7 @@ exports.deleteTasksRepeters = onRequest(async (request, response) => {
           console.log('No tasks found.');
           response.status(200).send('No tasks found.');
           return;
-        }
-
-      
+        }     
     
         // Mapear tasks agrupadas por idCredit
         const tasksByCredit = {};
@@ -1358,6 +1352,40 @@ exports.createTasks = onRequest(async (request, response) => {
     }
 
     response.status(200).send('Tareas creadas exitosamente.');
+});
+
+exports.deletePendingTasks = onRequest(async (request, response) => {
+    try {
+        // Obtener todas las tareas con estado "pending"
+        const refTasks = admin.firestore().collection(COLLECTION_TASKS).doc(formatoFecha()).collection(COLLECTION_TASKS);
+        const snapshot = await refTasks.where("stateTask", "==", "pending").get();
+    
+        if (snapshot.empty) {
+            console.log('No pending tasks found.');
+            return response.status(200).send('No pending tasks found.');
+        }
+    
+        // Crear un batch para eliminar las tareas
+        let batch = admin.firestore().batch();
+        let countBatch = 0;
+        let totalDeleted = 0;
+    
+        snapshot.forEach(doc => {
+            const taskRef = refTasks.doc(doc.id);
+            batch.delete(taskRef); // Eliminar la tarea
+            totalDeleted++;
+            countBatch++;            
+        });
+    
+        // Hacer commit del último batch si es necesario
+        if (countBatch < 15 && countBatch > 0) {
+            await batch.commit().then(() => console.log('Final batch commit successful'));
+        }    
+        response.status(200).send(`Successfully deleted ${totalDeleted} pending tasks.`);
+    } catch (error) {
+        console.error('Error deleting pending tasks:', error);
+        response.status(500).send('Error deleting pending tasks.');
+    }
 });
 
 // Reg: Tasks DB Functions ---------------------------------------------------------
