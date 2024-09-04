@@ -973,6 +973,82 @@ exports.updateStateCredits = onSchedule(
 );
 
 
+exports.updateActiveCreditsForAllCustomers = onSchedule(
+    {schedule: 'every day 05:00', timeZone: 'America/Bogota'},
+    async (event) => {
+
+    try {
+        // Obtener todos los créditos que no están terminados (finished)
+        const refCredits = admin.firestore().collection(COLLECTION_CREDITS);
+        const snapshotCredits = await refCredits.where("creditStatus", "!=", "finished").get();
+    
+        // Mapear créditos por cliente
+        const creditCountByCustomer = {};
+        snapshotCredits.forEach(doc => {
+            const data = doc.data();
+            const customerId = data.customerId;
+            const creditStatus=data.creditStatus;
+            if(creditStatus != "pending"){
+                if (creditCountByCustomer[customerId]) {
+                creditCountByCustomer[customerId]++;
+                } else {
+                creditCountByCustomer[customerId] = 1;
+                 }
+            }            
+        });
+        // Obtener todos los clientes de la colección
+        const refCustomers = admin.firestore().collection(COLLECTION_CUSTOMERS);
+        const snapshotCustomers = await refCustomers.get();
+    
+        if (snapshotCustomers.empty) {
+            console.log('No customers found.');
+            return response.status(200).send('No customers found.');
+        }
+    
+        // Crear un batch para actualizar todos los clientes
+        let batch = admin.firestore().batch();
+        let countBatch = 0;
+        let totalUpdated = 0;
+    
+        snapshotCustomers.forEach(doc => {
+            data=doc.data();
+            const customerId = doc.id;
+            const activeCreditsDb = data.activeCredits;
+            const activeCredits = creditCountByCustomer[customerId] || 0; // Si no tiene créditos activos, se asigna 0
+            
+             if(activeCreditsDb != activeCredits){
+                console.log(customerId+" / " +activeCreditsDb +' :'+ activeCredits);
+                // Crear objeto de actualización para el cliente
+                const dataCustomerUpdate = { activeCredits: activeCredits };
+                const refCustomer = refCustomers.doc(customerId);
+    
+
+                batch.update(refCustomer, dataCustomerUpdate);
+                totalUpdated=totalUpdated+activeCredits;
+                countBatch++;
+
+                // Hacer commit cada 400 actualizaciones
+                if (countBatch >= 400) {
+                    batch.commit().then(() => console.log('Batch commit successful'));
+                    batch = admin.firestore().batch();
+                    countBatch = 0;
+                }
+            }
+            
+        });
+
+        // Hacer commit del último batch si es necesario
+        if (countBatch > 0) {
+            await batch.commit().then(() => console.log('Final batch commit successful'));
+        }
+
+        response.status(200).send(`Successfully updated ${totalUpdated} customers with active credits.`);
+    } catch (error) {
+        console.error('Error updating customers:', error);
+        response.status(500).send('Error updating customers.');
+    }
+});
+
 function parseFecha(fechaStr) {
     // Dividir la fecha en partes [día, mes, año]
     const partes = fechaStr.split('-');
@@ -1445,11 +1521,8 @@ exports.updateCustomer = onDocumentUpdated("/customers/{id}", async (event) => {
     if(customerData.cell.cell1 != customerDataBf.cell.cell1)
         {
             updateCellCreditsTasks(customerData.id, customerData.cell.cell1, customerData.activeCredits);
-        }  
-
-
+        }
 });
-
 /**
  * Save Multiple Customers
  * @param customerList Array of customers
