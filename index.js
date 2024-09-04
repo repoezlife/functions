@@ -1002,7 +1002,7 @@ exports.updateActiveCreditsForAllCustomers = onSchedule(
     
         if (snapshotCustomers.empty) {
             console.log('No customers found.');
-            return response.status(200).send('No customers found.');
+            return;
         }
     
         // Crear un batch para actualizar todos los clientes
@@ -1042,10 +1042,10 @@ exports.updateActiveCreditsForAllCustomers = onSchedule(
             await batch.commit().then(() => console.log('Final batch commit successful'));
         }
 
-        response.status(200).send(`Successfully updated ${totalUpdated} customers with active credits.`);
+        console.log(totalUpdated);
     } catch (error) {
         console.error('Error updating customers:', error);
-        response.status(500).send('Error updating customers.');
+        
     }
 });
 
