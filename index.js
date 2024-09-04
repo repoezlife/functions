@@ -1418,7 +1418,80 @@ async function updateTask( dataU,id, date) {
     });
 }
 
-// Reg: Visit DB functions ---------------------------------------------------------
+// Reg: Visit Event Functions ---------------------------------------------------------
+
+exports.updatedVisit = onDocumentUpdated("/visits/{idVisit}", async (event) => {
+    console.log('actualizando visita');
+    let visitData = event.data.after.data();
+    console.log(visitData);
+    if(visitData.status == 'done') {
+        let visitIncomes = getIncomestoCustomer(visitData);
+        let visitExpenses = getExpensestoCustomer(visitData);
+        let liquidity = visitIncomes - visitExpenses;
+
+        visitData.totalIncomes = visitIncomes;
+        visitData.totalExpenses = visitExpenses;
+        visitData.liquidity = liquidity;
+        updateVisit(visitData, visitData.idVisit);
+    }
+});
+
+// Reg: Visit Aux functions ------------------------------------------------------------
+
+function getIncomestoCustomer(visitData) {
+    let totalIncomes = 0;
+    let result = 0;
+    if (visitData.occupation == 'independent') {
+        let averageDaysIncome = (visitData.independentGoodDaysIncome + visitData.independentBadDaysIncome) / 2;
+        totalIncomes = averageDaysIncome * visitData.independentDaysWorkedInMonth;
+        result = (visitData.independentUtilityPercentage / 100) * totalIncomes;
+    } else {
+        result = visitData.employeeMonthlyIncome + visitData.employeeOtherIncome;
+    }
+    return result;
+}
+
+function getExpensestoCustomer(visitData) {
+    let totalExpenses = 0;
+    if (visitData.occupation == 'independent') {
+        let totalEmployeesPayment = visitData.independentEmployeesAverageSalary * visitData.independentEmployeesAmount;
+        totalExpenses = totalEmployeesPayment + 
+            visitData.independentWorkPlaceRental + 
+            visitData.independentOtherExpenses + 
+            visitData.independentBusinessWatter +
+            visitData.independentBusinessEnergy +
+            visitData.independentBusinessGas +
+            visitData.independentBusinessInternet + 
+            visitData.watter + 
+            visitData.energy + 
+            visitData.gas + 
+            visitData.internet + 
+            visitData.rentOrFee + 
+            visitData.feedingExpenses + 
+            visitData.gasoline + 
+            visitData.cellPhoneExpense + 
+            visitData.childSupport + 
+            visitData.amusement + 
+            visitData.bankDebts + 
+            visitData.otherExpenses;
+    } else {
+        totalExpenses = visitData.watter + 
+            visitData.energy + 
+            visitData.gas + 
+            visitData.internet + 
+            visitData.rentOrFee + 
+            visitData.feedingExpenses + 
+            visitData.gasoline + 
+            visitData.cellPhoneExpense + 
+            visitData.childSupport + 
+            visitData.amusement + 
+            visitData.bankDebts + 
+            visitData.otherExpenses;
+    }
+    return totalExpenses;
+}
+
+// Reg: Visit DB functions ------------------------------------------------------------
 /**
  * Update Visit in DB
  * @param dataVisit 
@@ -1426,7 +1499,7 @@ async function updateTask( dataU,id, date) {
  */
 async function updateVisit(dataVisit, idVisit) {
     const visitRef = admin.firestore().collection(COLLECTION_VISITS).doc(idVisit + "");
-    await creditRef.update(dataVisit).then(() => {
+    await visitRef.update(dataVisit).then(() => {
         console.log(idVisit + '  Visita actualizado exitosamente. ' + dataVisit);
     }).catch((error) => {
         console.error(idVisit+ '  Error al actualizar el credito:', error);
