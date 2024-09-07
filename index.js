@@ -1587,7 +1587,7 @@ exports.updateZoneForCustomers = onRequest(async (request, response) => {
         });
         polygonZones = getPolygonMapByZones(zones);
         //Get All Customer
-        const refCustomers = admin.firestore().collection(CUSTOMERS_COLLECTION_NAME);
+        const refCustomers = admin.firestore().collection(COLLECTION_CUSTOMERS);
         const customerSnapshot = await refCustomers.get();
         if (customerSnapshot.empty) {
             responseMessage = 'No matching documents in Customers.';
