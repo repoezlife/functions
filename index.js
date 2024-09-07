@@ -795,6 +795,34 @@ async function registerPayCommission(dataP, idPay) {
 }
 
 // Reg: Credits Events Functions ---------------------------------------------------------
+
+exports.sendDataCredit = onRequest(async (request, response) => {
+    const idCredit = request.query.idCredit;
+    if(idCredit){
+
+        const refCredits = admin.firestore().collection("credits").doc(idCredit);
+        const snapshot = await refCredits.get();
+        let batch = admin.firestore().batch();
+        const hoy = parseFecha(formatoFecha());
+
+        if (snapshot.empty) {
+            console.log('No matching documents.');
+            return response.status(200).send('No matching documents.');
+        }
+        const documentos = [];    
+        // Iterar sobre los documentos y agregarlos al arreglo
+        const ll=snapshot.data();
+        
+        // Enviar los documentos como respuesta en formato JSON
+        response.status(200).send(ll);
+
+    }
+    else{
+        response.status(200).send('No hay ID');    
+    }
+    
+    
+});
 exports.reviewDateCredits = onRequest(async (request, response) => {
     try {
         const refCredits = admin.firestore().collection("credits").where("creditStatus", "!=", "finished");
