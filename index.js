@@ -1531,7 +1531,7 @@ exports.getZone = onDocumentCreated("/customers/{id}", async (event) => {
 async function saveCustomer(customer) {
     try {
         console.log('actualizando cliente...' + customer.id + ' :: ' + customer.zone);
-        return await admin.firestore().collection(CUSTOMERS_COLLECTION_NAME).doc(customer.id).set(customer);
+        return await admin.firestore().collection(COLLECTION_CUSTOMERS).doc(customer.id).set(customer);
     } catch (err) {
         console.log('el error con ci:' + customer.id);
         console.log(err);
