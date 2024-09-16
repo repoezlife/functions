@@ -25,6 +25,7 @@ admin.initializeApp();
  * Constants paths for collections Names
  */
 const COLLECTION_CREDITS = 'credits';
+const COLLECTION_CREDITS_DELETES = 'creditsDeletes';
 const COLLECTION_CUSTOMERS = 'customers';
 const COLLECTION_MODIFIED_PAYMENTS = 'modifiedPayments';
 const COLLECTION_PAYMENT_MEDIUM = 'paymentMedium';
@@ -1216,6 +1217,16 @@ async function updateCredit(dataCred, idCredit) {
         console.error(idCredit + '  Error al actualizar el credito:', error);
     });
 }
+
+exports.deleteCredits = onDocumentDeleted("/credits/{id}", (event) => {
+    
+    const snap =  event.data;
+    const data =  snap.data();
+    console.log(formatoFecha()+":  "+data)
+    const refCredits = admin.firestore().collection(COLLECTION_CREDITS_DELETES);
+    refCredits.doc(data.id).set(data);
+   
+});
 
 // Reg: Tasks Events Functions ---------------------------------------------------------
 
