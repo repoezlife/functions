@@ -1120,8 +1120,9 @@ async function updateZoneCreditsTasks(idCustomer, zona, activeCredits, address, 
     if (!credits.empty) {
         //credits.forEach(async doc => {
         for (const doc of credits.docs) {
-            if (doc.creditStatus != 'finished') {
-                const dt = doc.data();
+            const dt = doc.data();
+            if (dt.creditStatus != 'finished') {
+                
                 console.log("UpdateCredit: " + dt.id + "  UpdateTask: " + dt.nextPay + "/" + dt.idTask);
 
                 const dataZone = {
