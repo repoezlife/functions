@@ -846,6 +846,7 @@ exports.reviewDateCredits = onRequest(async (request, response) => {
             if (nextPay < hoy) {
                 overdueCredits.push(data.name +" "+data.lastName+"/"+data.id); // Agregar a la lista de créditos vencidos
                 const idTask=data.id+"P";
+                console.log(data.id+" "+data.name+" "+ data.nextPay);
 
                 if(data.creditStatus == "pending"){
                     const dataNewTask={
@@ -911,16 +912,18 @@ exports.reviewDateCredits = onRequest(async (request, response) => {
 
             }
         });
-        await batch.commit().then(() => {
+
+/*         await batch.commit().then(() => {
             console.log('Commit del lote exitoso');
             batch = admin.firestore().batch();            
         }).catch(error => {
             console.error('Error al hacer el commit del lote:', error);
         });
-
+ */
         // Enviar todos los créditos vencidos en la respuesta
         if (overdueCredits.length > 0) {
             response.status(200).send(overdueCredits);
+            console.log(overdueCredits);
         } else {
             response.status(200).send('No hay créditos con fecha de cobro menor a  '+hoy);
         }
@@ -1223,9 +1226,43 @@ exports.deleteCredits = onDocumentDeleted("/credits/{id}", (event) => {
     
     const snap =  event.data;
     const data =  snap.data();
-    console.log(formatoFecha()+":  "+data)
+    const now = new Date();
+    const formattedDate = now.toLocaleString('es-CO', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false // 24 horas
+    });
+    data.dateDelete=formattedDate;
+    console.log(formattedDate+":  "+data.id)
     const refCredits = admin.firestore().collection(COLLECTION_CREDITS_DELETES);
     refCredits.doc(data.id).set(data);
+   
+});
+
+exports.restartCredits = onRequest(async (request, response) => {
+
+    const idC= request.query.idCredit;
+    if(idC){    
+        const refDeleteCredit = admin.firestore().collection(COLLECTION_CREDITS_DELETES).doc(idC);
+        const snapshot = await refDeleteCredit.get();    
+        if (snapshot.empty) {
+            console.log('No Credit found.');
+            response.status(200).send('No credit found.');
+            return;
+        }     
+        const data=snapshot.data();     
+        const refCredits = admin.firestore().collection(COLLECTION_CREDITS);
+        refCredits.doc(idC).set(data);
+        response.send(idC+' Restaurado');   
+    }
+    else{
+        response.status(200).send('No hay ID');    
+    }
+
    
 });
 
@@ -1860,7 +1897,7 @@ function formatoFecha3() {
  * Return zones data
  */
 const getZonesData = new Promise((resolve, reject) => {
-    console.log('buscando zonas...');
+  // console.log('buscando zonas...');
     const refZones = admin.firestore().collection(COLLECTION_ZONE);
     refZones.get().then(zonesSnapshot => {
         if (zonesSnapshot.empty) {
