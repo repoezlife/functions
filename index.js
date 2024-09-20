@@ -19,6 +19,7 @@ const { promises } = require("dns");
 const { log } = require("console");
 const { resolve } = require("path");
 const { rejects } = require("assert");
+const { evaluateDate } = require("./date-format.functions");
 admin.initializeApp();
 
 /**
@@ -410,6 +411,40 @@ exports.reviewTasks = onSchedule(
   });
 
 // Reg: Payments Events Functions ---------------------------------------------------------
+/**Auxiliar Get Payments */
+exports.getPaymentsBydateRange = onRequest({} , async (req, res) => {
+    try {
+        const bodyData = req.body;
+        //Get Payment
+        let payments = [];
+        let countReg = 0;
+        let message = '';
+        let refPayments = admin.firestore().collection(bodyData.nameCollection);
+        const snapshot = await refPayments.get();
+        if (snapshot.empty) {
+            message = 'No matching documents for: ' + bodyData.nameCollection;
+            console.log(message);
+            return;
+        }
+        for (let paydoc of snapshot.docs) {
+            let payData = paydoc.data();
+            if (evaluateDate(bodyData.dateFilterIni, bodyData.dateFilterFin, payData.date)) {
+                countReg += 1;
+                payments.push(payData);
+            }
+        }
+        res.status(200).json({
+            countpayments: countReg,
+            result: payments,
+            message: message
+        });
+    } catch (error) {
+        res.status(500).json({
+            message: error
+        })
+    }
+});
+
 /**
  * On document created (Payment)
  */
