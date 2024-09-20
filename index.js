@@ -7,6 +7,9 @@ const { onDocumentDeleted } = require("firebase-functions/v2/firestore");
 const { onDocumentUpdated } = require("firebase-functions/v2/firestore");
 const pointInPolygon = require('point-in-polygon');
 const fs = require('fs');
+const Busboy = require('busboy');
+const path = require('path');
+const os = require('os');
 
 /**
  * Init Firestore Admin
@@ -797,6 +800,59 @@ async function registerPayCommission(dataP, idPay) {
 
 // Reg: Credits Events Functions ---------------------------------------------------------
 
+exports.uploadImageCredit = onRequest(async(req, res) => {
+    if (req.method !== 'POST') {
+        return res.status(405).send('Método no permitido');
+    }
+
+    const busboy = new Busboy({ headers: req.headers });
+    const tmpdir = os.tmpdir();
+    let upload;
+    let id;
+
+    busboy.on('field', (fieldname, value) => {
+        if (fieldname === 'id') {
+            id = value; // Captura el ID del cliente
+        }
+    });
+
+    busboy.on('file', (fieldname, file, filename, encoding, mimetype) => {
+        const filepath = path.join(tmpdir, filename);
+        upload = { file: filepath, mimetype: mimetype };
+        file.pipe(fs.createWriteStream(filepath));
+    });
+
+    busboy.on('finish', async () => {
+        if (!upload || !id) {
+            return res.status(400).send('Faltan parámetros necesarios');
+        }
+
+        // Define el destino de la imagen en Storage
+        const bucket = admin.storage().bucket();
+        const destination = `pruebas/${id}/${path.basename(upload.file)}`;
+
+        // Sube la imagen al Storage
+        try {
+            await bucket.upload(upload.file, {
+                destination: destination,
+                metadata: {
+                    contentType: upload.mimetype
+                }
+            });
+
+            // Elimina el archivo temporal una vez que se ha subido
+            fs.unlinkSync(upload.file);
+
+            return res.status(200).send(`Imagen subida correctamente con el ID: ${id}`);
+        } catch (error) {
+            console.error('Error al subir la imagen:', error);
+            return res.status(500).send('Error al subir la imagen');
+        }
+    });
+
+    busboy.end(req.rawBody);
+});
+
 exports.sendDataCredit = onRequest(async (request, response) => {
     const idCredit = request.query.idCredit;
     if(idCredit){
@@ -830,6 +886,7 @@ exports.reviewDateCredits = onRequest(async (request, response) => {
         const snapshot = await refCredits.get();
         let batch = admin.firestore().batch();
         const hoy = parseFecha(formatoFecha());
+        console.log("Fecha de revisión:  "+hoy);
 
         if (snapshot.empty) {
             console.log('No matching documents.');
@@ -922,7 +979,7 @@ exports.reviewDateCredits = onRequest(async (request, response) => {
  */
         // Enviar todos los créditos vencidos en la respuesta
         if (overdueCredits.length > 0) {
-            response.status(200).send(overdueCredits);
+            response.status(200).send("Fecha revisión  "+hoy+"   "+overdueCredits);
             console.log(overdueCredits);
         } else {
             response.status(200).send('No hay créditos con fecha de cobro menor a  '+hoy);
@@ -933,6 +990,67 @@ exports.reviewDateCredits = onRequest(async (request, response) => {
         response.status(500).send('Error reviewing credits.');
     }
 });
+
+// Definir la función de segunda generación que se activa cuando se elimina una tarea
+exports.onTaskDeleted = onDocumentDeleted("tasks/{date}/tasks/{id}", async (event) => {
+    const snap = event.data; // Datos del documento eliminado
+    const deletedTaskData = snap.data(); // Obtener la data del documento eliminado
+    const date = event.params.date; // Fecha capturada del wildcard
+    const taskId = event.params.id; // taskId capturado del wildcard    
+
+    const now = new Date();
+    const formattedDate = now.toLocaleString('es-CO', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false // 24 horas
+    });
+  //  deletedTaskData.dateDelete=formattedDate;
+    console.log(`Task deleted on date: ${date} with ID: ${taskId} dateDelete ${formattedDate}`);  
+    // Aquí puedes realizar las acciones necesarias cuando una tarea es eliminada
+  
+    // Ejemplo: Guardar registro en una colección 'deleted_tasks_log'
+    const deletedLogRef = admin.firestore().collection('deleted_tasks_log').doc(taskId);
+    await deletedLogRef.set({
+      ...deletedTaskData,
+      deletedAt: new Date(), // Hora en que se eliminó la tarea
+      deletedDate: date // Fecha de la tarea eliminada
+    });
+  
+    return null; // Es necesario devolver null o una promesa en las funciones asíncronas
+  });
+  exports.onCustomerDeleted = onDocumentDeleted("customers/{id}", async (event) => {
+    const snap = event.data; // Datos del documento eliminado
+    const deletedTaskData = snap.data(); // Obtener la data del documento eliminado
+   
+    const taskId = event.params.id; // taskId capturado del wildcard    
+
+    const now = new Date();
+    const formattedDate = now.toLocaleString('es-CO', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false // 24 horas
+    });
+  //  deletedTaskData.dateDelete=formattedDate;
+    console.log(`Customer deleted  with ID: ${taskId} dateDelete ${now}`);  
+    // Aquí puedes realizar las acciones necesarias cuando una tarea es eliminada
+  
+    // Ejemplo: Guardar registro en una colección 'deleted_tasks_log'
+    const deletedLogRef = admin.firestore().collection('deleted_customers_log').doc(taskId);
+    await deletedLogRef.set({
+      ...deletedTaskData,
+      deletedAt: new Date()
+    });
+  
+    return null; // Es necesario devolver null o una promesa en las funciones asíncronas
+  });
 
 exports.updateStateCredits = onSchedule(
     {schedule: 'every day 05:30', timeZone: 'America/Bogota'},
@@ -1237,8 +1355,13 @@ exports.deleteCredits = onDocumentDeleted("/credits/{id}", (event) => {
         hour12: false // 24 horas
     });
     data.dateDelete=formattedDate;
-    console.log(formattedDate+":  "+data.id)
+    data.deleteAt=now;
+    console.log(now+":  "+data.id+"  "+data.name+"  "+data.lastName)
     const refCredits = admin.firestore().collection(COLLECTION_CREDITS_DELETES);
+    if(data.creditStatus == "pending"){
+        return;
+
+    }
     refCredits.doc(data.id).set(data);
    
 });
