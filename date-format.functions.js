@@ -1,4 +1,21 @@
 /**
+ * Order Array By date
+ * @param {Date} array Array Dates
+ * @returns 
+ */
+const sortByDateDesc = (array) => {
+    return array.sort((a, b) => {
+      // Convert date "dd-mm-yyyy" to format "yyyy-mm-dd"
+      const dateA = a.date.split('-').reverse().join('-');
+      const dateB = b.date.split('-').reverse().join('-');
+  
+      // Convert the strings to Date objects to compare
+      return new Date(dateB) - new Date(dateA);
+    });
+}
+ 
+
+/**
  * Returns true if dateToEvaluate is beetwen firstDate and lastDate 
  * or false otherwise
  * @param {string} firstDate 
@@ -15,10 +32,6 @@ const evaluateDate = (firstDate, lastDate, dateToEvaluate) => {
     }
     if (!lastDate) {
         return parseDateFormat(dateToEvaluate) >= parseDateFormat(firstDate);
-    }
-    if (parseDateFormat(dateToEvaluate) >= parseDateFormat(firstDate) && parseDateFormat(dateToEvaluate) <= parseDateFormat(lastDate)) {
-        console.log(parseDateFormat(firstDate), parseDateFormat(lastDate));
-        console.log(parseDateFormat(dateToEvaluate));
     }
     return parseDateFormat(dateToEvaluate) >= parseDateFormat(firstDate) && parseDateFormat(dateToEvaluate) <= parseDateFormat(lastDate);
 }
@@ -37,5 +50,6 @@ function parseDateFormat(dateString) {
 
 // Export functions so they can be used in other files
 module.exports = {
-    evaluateDate
+    evaluateDate,
+    sortByDateDesc
 };
