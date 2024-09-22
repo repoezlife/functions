@@ -1,6 +1,7 @@
 const calculateMonthBalance = (docs, dateMonthFilter) => {
     let totalCapital = 0;
     let totalUtility = 0;
+    let totalBalance = 0;
     let numPagos = 0;
     for (let paydoc of docs) {
         let payData = paydoc.data();
@@ -10,10 +11,12 @@ const calculateMonthBalance = (docs, dateMonthFilter) => {
             numPagos += 1;
         }
     }
+    totalBalance = totalCapital + totalUtility;
     return {
         'capital' : totalCapital,
         'utility' : totalUtility,
-        'numpagos' : numPagos,
+        'total' : totalBalance,
+        'numpagos' : numPagos
     }
 }
 // Export functions so they can be used in other files
