@@ -24,6 +24,7 @@ const { resolve } = require("path");
 const { rejects } = require("assert");
 const { evaluateDate, sortByDateDesc } = require("./date-format.functions");
 const { calculateMonthBalance } = require("./payment-result.functions");
+const { calculateCreditsBalance } = require("./credit-result.functions");
 admin.initializeApp();
 
 /**
@@ -468,7 +469,36 @@ exports.getBalanceByDate = onRequest({ cors: true }, async (req, res) => {
             return;
         }
         
-        let resultBalance = calculateMonthBalance(snapshot.docs);
+        let resultBalance = calculateMonthBalance(snapshot.docs, bodyData.dateFilter);
+        res.status(200).json({
+            result: resultBalance,
+            message: 'Petición completada'
+        });
+    } catch (error) {
+        res.status(500).json({
+            message: error
+        })
+    }
+});
+
+// Reg: Credits Events Functions ---------------------------------------------------------
+exports.getBalanceCredits = onRequest({ cors: true }, async (req, res) => {
+    try {
+        const bodyData = req.body;
+        //Get Credits
+        let message = '';
+        let refCredits = admin.firestore().collection(bodyData.nameCollection).where('creditStatus', '!=', 'finished').where('creditStatus', '!=', 'pending');
+        const snapshot = await refCredits.get();
+        if (snapshot.empty) {
+            message = 'No matching documents for: ' + bodyData.nameCollection;
+            console.log(message);
+            res.status(200).json({
+                result: false,
+                message: message
+            });
+        }
+        
+        let resultBalance = calculateCreditsBalance(snapshot.docs);
         res.status(200).json({
             result: resultBalance,
             message: 'Petición completada'
