@@ -11,7 +11,7 @@ const calculateCreditsBalance = (docs) => {
     return {
         'capital' : totalCapitalToPay,
         'utility' : totalBalance,
-        'numpagos' : numCredits,
+        'numcredits' : numCredits,
     }
 }
 

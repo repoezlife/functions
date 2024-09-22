@@ -4,7 +4,7 @@ const calculateMonthBalance = (docs, dateMonthFilter) => {
     let numPagos = 0;
     for (let paydoc of docs) {
         let payData = paydoc.data();
-        if (payData.date.include(dateMonthFilter)) {
+        if (payData.date.includes(dateMonthFilter)) {
             totalCapital += payData.capitalPart;
             totalUtility += payData.utilityPart;
             numPagos += 1;

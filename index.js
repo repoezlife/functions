@@ -487,7 +487,7 @@ exports.getBalanceCredits = onRequest({ cors: true }, async (req, res) => {
         const bodyData = req.body;
         //Get Credits
         let message = '';
-        let refCredits = admin.firestore().collection(bodyData.nameCollection).where('creditStatus', '!=', 'finished').where('creditStatus', '!=', 'pending');
+        let refCredits = admin.firestore().collection(bodyData.nameCollection).where('creditStatus', 'not-in', ['finished', 'pending']);
         const snapshot = await refCredits.get();
         if (snapshot.empty) {
             message = 'No matching documents for: ' + bodyData.nameCollection;
