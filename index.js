@@ -22,6 +22,9 @@ const { promises } = require("dns");
 const { log } = require("console");
 const { resolve } = require("path");
 const { rejects } = require("assert");
+const { evaluateDate, sortByDateDesc } = require("./date-format.functions");
+const { calculateMonthBalance } = require("./payment-result.functions");
+const { calculateCreditsBalance } = require("./credit-result.functions");
 admin.initializeApp();
 
 /**
@@ -414,6 +417,99 @@ exports.reviewTasks = onSchedule(
   });
 
 // Reg: Payments Events Functions ---------------------------------------------------------
+/**Auxiliar Get Payments */
+exports.getPaymentsBydateRange = onRequest({ cors: true }, async (req, res) => {
+    try {
+        const bodyData = req.body;
+        //Get Payment
+        let payments = [];
+        let countReg = 0;
+        let message = '';
+        let refPayments = admin.firestore().collection(bodyData.nameCollection);
+        const snapshot = await refPayments.get();
+        if (snapshot.empty) {
+            message = 'No matching documents for: ' + bodyData.nameCollection;
+            console.log(message);
+            return;
+        }
+        for (let paydoc of snapshot.docs) {
+            let payData = paydoc.data();
+            if (evaluateDate(bodyData.dateFilterIni, bodyData.dateFilterFin, payData.date)) {
+                countReg += 1;
+                payments.push(payData);
+            }
+        }
+        res.status(200).json({
+            countpayments: countReg,
+            result: sortByDateDesc(payments),
+            message: message
+        });
+    } catch (error) {
+        console.log('entrando en exception');
+        console.log(error);
+        console.log(error.textPayload);
+        res.status(500).json({
+            message: error.textPayload
+        })
+    }
+});
+
+exports.getBalanceByDate = onRequest({ cors: true }, async (req, res) => {
+    try {
+        const bodyData = req.body;
+        //Get Payment
+        let payments = [];
+        let countReg = 0;
+        let message = '';
+        let refPayments = admin.firestore().collection(bodyData.nameCollection);
+        const snapshot = await refPayments.get();
+        if (snapshot.empty) {
+            message = 'No matching documents for: ' + bodyData.nameCollection;
+            console.log(message);
+            return;
+        }
+        
+        let resultBalance = calculateMonthBalance(snapshot.docs, bodyData.dateFilter);
+        res.status(200).json({
+            result: resultBalance,
+            message: 'Petición completada'
+        });
+    } catch (error) {
+        res.status(500).json({
+            message: error
+        })
+    }
+});
+
+// Reg: Credits Events Functions ---------------------------------------------------------
+exports.getBalanceCredits = onRequest({ cors: true }, async (req, res) => {
+    try {
+        const bodyData = req.body;
+        //Get Credits
+        let message = '';
+        let refCredits = admin.firestore().collection(bodyData.nameCollection).where('creditStatus', 'not-in', ['finished', 'pending']);
+        const snapshot = await refCredits.get();
+        if (snapshot.empty) {
+            message = 'No matching documents for: ' + bodyData.nameCollection;
+            console.log(message);
+            res.status(200).json({
+                result: false,
+                message: message
+            });
+        }
+        
+        let resultBalance = calculateCreditsBalance(snapshot.docs);
+        res.status(200).json({
+            result: resultBalance,
+            message: 'Petición completada'
+        });
+    } catch (error) {
+        res.status(500).json({
+            message: error
+        })
+    }
+});
+
 /**
  * On document created (Payment)
  */
