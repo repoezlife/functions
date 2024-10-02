@@ -765,6 +765,13 @@ exports.updatePayment = onDocumentUpdated("/payments/{idPay}", (event) => {
                 updateCredit(dataCredit, idCredit);
             }                
         }
+
+        const dataPayModified={
+            valuePayAfter:valuePay
+        }
+        
+        updatePayModified(dataPayModified, idPay);
+        
     }
 
     else{
@@ -783,6 +790,13 @@ exports.updatePayment = onDocumentUpdated("/payments/{idPay}", (event) => {
  */
 async function updatePay(dataP, idPay) {
     await admin.firestore().collection(COLLECTION_PAYMENTS).doc(idPay + "").update(dataP).then(() => {
+        console.log(idPay + 'Pago actualizado exitosamente. ' + dataP);
+    }).catch((error) => {
+        console.error(idPay + 'Error al actualizar el pago:', error);
+    });
+}
+async function updatePayModified(dataP, idPay) {
+    await admin.firestore().collection("modifiedPayments").doc(idPay + "").update(dataP).then(() => {
         console.log(idPay + 'Pago actualizado exitosamente. ' + dataP);
     }).catch((error) => {
         console.error(idPay + 'Error al actualizar el pago:', error);
