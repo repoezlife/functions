@@ -5,11 +5,30 @@ const logger = require("firebase-functions/logger");
 const { onDocumentCreated } = require("firebase-functions/v2/firestore");
 const { onDocumentDeleted } = require("firebase-functions/v2/firestore");
 const { onDocumentUpdated } = require("firebase-functions/v2/firestore");
+const { onDocumentWritten } = require("firebase-functions/v2/firestore");
 const pointInPolygon = require('point-in-polygon');
 const fs = require('fs');
 const Busboy = require('busboy');
 const path = require('path');
 const os = require('os');
+
+// Importar correctamente desde firebase-admin/app
+const { initializeApp, cert } = require('firebase-admin/app');
+const { getDatabase } = require('firebase-admin/database');
+
+
+
+// Proyecto B: Inicializar con credenciales
+const serviceAccountB = require(path.join(__dirname, 'serviceAccounts', 'creditos-5d13f-firebase-adminsdk-gdclk-6faa1f5291.json'));
+
+const appB = initializeApp({
+  credential: cert(serviceAccountB),
+  databaseURL: 'https://creditos-5d13f.firebaseio.com/'
+}, 'appB'); // El nombre "appB" es opcional pero recomendable para evitar confusión con el app predeterminado
+
+// Acceder a Realtime Database del Proyecto B
+const realtimeDatabaseB = getDatabase(appB);
+
 
 /**
  * Init Firestore Admin
@@ -17,6 +36,7 @@ const os = require('os');
 const apiKey='AIzaSyDLxCPZqwC3qo61Sv0EsCNKpRf3Oj0IzSk';
 
 const admin = require('firebase-admin');
+
 const { randomInt } = require("crypto");
 const { promises } = require("dns");
 const { log } = require("console");
@@ -686,6 +706,78 @@ exports.createPay = onDocumentCreated("/payments/{idPay}", (event) => {
             updateCredit(dataCredit, idCredit);
         }                
     }    
+});
+
+exports.createCustomer = onDocumentCreated("/customers/{id}", async (event) => {
+    const snapshot = event.data;
+    if (!snapshot) {
+        console.log("No data associated with the event");
+        return;
+    }
+    const data = snapshot.data();
+    const ad1=data.address.address1.address || "";
+    const ad2="";//data.address.address2.address || "";
+    const ref8 =data.reference || "";
+
+    const dataCustomer={
+        name:data.name.name,
+        lastName:data.name.lastName,
+        id:data.id,
+        cell:data.cell.cell1,
+        addressHouse:ad1,
+        address2:ad2,
+        zone:data.zone,
+        route:"1",
+        reference:ref8,
+        valorCredito:0,
+        tiempoCredito:0,
+        porcentajeCredito:0,
+        maxCupo:0,
+        comportamientoCredito:"nuevo"
+    }
+    const ref = realtimeDatabaseB.ref('customers_new_system').child(data.id);
+    await ref.set(dataCustomer);   
+});
+
+exports.createCredit = onDocumentWritten("/credits/{id}", async (event) => {
+    const snapshot = event.data.after;
+    if (!snapshot) {
+        console.log("No data associated with the event");
+        return;
+    }
+    const data = snapshot.data();
+
+    if(data.creditStatus == "active"){
+        const d=formatoFecha();
+        const dataCredit={
+            idCredit:data.id,
+            date:d,
+            customer:data.customerId,
+            name:data.name + data.lastName,
+            value:data.value,
+            percentage:data.percentage,
+            time: data.timeCredit,
+            numberFee: data.numberFee,
+            valueFee: data.valueFee,
+            totalPay: data.totalPay,
+            utilityPartial:data.utilityPartial,
+            utilityCredit:data.utilityCredit,
+            capitaltoPay:data.capitalToPay,
+            utilitytoPay:data.utilityToPay,
+            balance:data.balance,
+            nextPay:data.nextPay,
+            day:"Manana",
+            creditStatus:1,
+            route:"1",
+            address2:data.address,
+            zone:data.zone,
+            by:data.idUser,
+            cell:data.cellphone
+        }
+        const ref = realtimeDatabaseB.ref('credits_new_system').child(data.id);
+        await ref.set(dataCredit);
+    }
+      
 });
 
 /**
