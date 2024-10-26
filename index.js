@@ -1002,23 +1002,32 @@ async function registerPayCommission(dataP, idPay) {
 
 // Reg: Credits Events Functions ---------------------------------------------------------
 
-exports.uploadImageCredit = onRequest(async(req, res) => {
+
+
+const { getStorage } = require('firebase-admin/storage');
+
+
+exports.uploadImageCredit = onRequest(async (req, res) => {
     if (req.method !== 'POST') {
         return res.status(405).send('Método no permitido');
     }
 
-    const busboy = new Busboy({ headers: req.headers });
+    const busboy = Busboy({ headers: req.headers });
     const tmpdir = os.tmpdir();
     let upload;
     let id;
 
     busboy.on('field', (fieldname, value) => {
         if (fieldname === 'id') {
-            id = value; // Captura el ID del cliente
+            id = value;
         }
     });
 
     busboy.on('file', (fieldname, file, filename, encoding, mimetype) => {
+        // Verificar si filename es una cadena
+        if (typeof filename !== 'string' || filename.trim() === '') {
+            filename = `virtual_${id}_${Date.now()}.jpg`; // Valor predeterminado
+        }
         const filepath = path.join(tmpdir, filename);
         upload = { file: filepath, mimetype: mimetype };
         file.pipe(fs.createWriteStream(filepath));
@@ -1029,23 +1038,25 @@ exports.uploadImageCredit = onRequest(async(req, res) => {
             return res.status(400).send('Faltan parámetros necesarios');
         }
 
-        // Define el destino de la imagen en Storage
-        const bucket = admin.storage().bucket();
-        const destination = `pruebas/${id}/${path.basename(upload.file)}`;
+        const bucket = getStorage().bucket();
+        const destination = `credits_virtuals/${path.basename(upload.file)}`;
 
-        // Sube la imagen al Storage
         try {
             await bucket.upload(upload.file, {
                 destination: destination,
-                metadata: {
-                    contentType: upload.mimetype
-                }
+                metadata: { contentType: upload.mimetype },
             });
 
-            // Elimina el archivo temporal una vez que se ha subido
             fs.unlinkSync(upload.file);
 
-            return res.status(200).send(`Imagen subida correctamente con el ID: ${id}`);
+            const file = bucket.file(destination);
+            await file.makePublic();
+
+            const publicUrl = `https://storage.googleapis.com/${bucket.name}/${destination}`;
+
+            await enviarLinkYId(publicUrl, id);
+
+            return res.status(200).send(`Imagen subida correctamente con el ID: ${id} y el enlace: ${publicUrl}`);
         } catch (error) {
             console.error('Error al subir la imagen:', error);
             return res.status(500).send('Error al subir la imagen');
@@ -1054,6 +1065,41 @@ exports.uploadImageCredit = onRequest(async(req, res) => {
 
     busboy.end(req.rawBody);
 });
+
+async function enviarLinkYId(url, id) {
+    console.log(`Procesando link: ${url} y ID: ${id}`);
+
+    const dataNewTask={
+        id:idTask,
+        date: tomorrow,
+        idCredit: data.id,
+        address: data.address,
+        dateChange: null,
+        lat: data.lat,
+        lon: data.lon,
+        type: "creditToCollect",
+        idUser: "1061706410",
+        phone: data.cellphone,
+        zone:data.zone,
+        name: data.name,
+        lastName:data.lastName,
+        idVisit: null,
+        stateTask: "pending",
+        userWhoModified:null,
+        creditStatus:data.creditStatus,
+        valueDisburse:null
+    }    
+    const refNewTask= admin.firestore().collection("tasks").doc(tomorrow+"").collection("tasks").doc(idTask);
+
+    const dataCredit={                
+        creditStatus: "active",
+        imageReference:url,
+        idTask: idTask                
+    } 
+    const refUCredit= admin.firestore().collection("credits").doc(data.id);
+    // Lógica adicional
+}
+
 
 exports.sendDataCredit = onRequest(async (request, response) => {
     const idCredit = request.query.idCredit;
