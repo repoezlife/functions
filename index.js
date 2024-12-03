@@ -1016,17 +1016,32 @@ exports.uploadImageCredit = onRequest(async (req, res) => {
     const tmpdir = os.tmpdir();
     let upload;
     let id;
+    let dateDisburse;
+    let nextPay;
+    let idTask;
+    const d= Date.now();
 
     busboy.on('field', (fieldname, value) => {
         if (fieldname === 'id') {
             id = value;
         }
+        else if (fieldname === 'dateDisburse') {
+            dateDisburse = value;
+        }
+        else if (fieldname === 'nextPay') {
+            nextPay = value;
+        }
+        else if (fieldname === 'idTask') {
+            idTask = value;
+        }
     });
+
+    console.log(id + " " + dateDisburse+ " "+nextPay+ " "+idTask);
 
     busboy.on('file', (fieldname, file, filename, encoding, mimetype) => {
         // Verificar si filename es una cadena
         if (typeof filename !== 'string' || filename.trim() === '') {
-            filename = `virtual_${id}_${Date.now()}.jpg`; // Valor predeterminado
+            filename = `virtual_${id}_${d}.jpg`; // Valor predeterminado
         }
         const filepath = path.join(tmpdir, filename);
         upload = { file: filepath, mimetype: mimetype };
@@ -1034,7 +1049,8 @@ exports.uploadImageCredit = onRequest(async (req, res) => {
     });
 
     busboy.on('finish', async () => {
-        if (!upload || !id) {
+        if (!upload || !id || !dateDisburse || !nextPay || !idTask) {
+
             return res.status(400).send('Faltan parámetros necesarios');
         }
 
@@ -1054,7 +1070,7 @@ exports.uploadImageCredit = onRequest(async (req, res) => {
 
             const publicUrl = `https://storage.googleapis.com/${bucket.name}/${destination}`;
 
-            await enviarLinkYId(publicUrl, id);
+            await enviarLinkYId(publicUrl, id, idTask, dateDisburse, nextPay);
 
             return res.status(200).send(`Imagen subida correctamente con el ID: ${id} y el enlace: ${publicUrl}`);
         } catch (error) {
@@ -1066,19 +1082,29 @@ exports.uploadImageCredit = onRequest(async (req, res) => {
     busboy.end(req.rawBody);
 });
 
-async function enviarLinkYId(url, id) {
-    console.log(`Procesando link: ${url} y ID: ${id}`);
+async function enviarLinkYId(url, id, idTask, dateDisburse, nextPay) {
+    console.log(`Procesando link: ${url} y ID: ${id}  y idTask: ${idTask} y dateD: ${dateDisburse} y nP: ${nextPay}`);
+    const refCredits = admin.firestore().collection("credits").doc(id);
+    const snapshot = await refCredits.get();
+    let batch = admin.firestore().batch();
+    const it= idTask+"_V";
+    
 
+    if (snapshot.empty) {
+        console.log('No matching documents.');
+        return response.status(200).send('No matching documents.');
+    } 
+    const data=snapshot.data();
     const dataNewTask={
-        id:idTask,
-        date: tomorrow,
-        idCredit: data.id,
+        id:it,
+        date: nextPay,
+        idCredit: id,
         address: data.address,
         dateChange: null,
         lat: data.lat,
         lon: data.lon,
         type: "creditToCollect",
-        idUser: "1061706410",
+        idUser: data.customerId,
         phone: data.cellphone,
         zone:data.zone,
         name: data.name,
@@ -1089,15 +1115,24 @@ async function enviarLinkYId(url, id) {
         creditStatus:data.creditStatus,
         valueDisburse:null
     }    
-    const refNewTask= admin.firestore().collection("tasks").doc(tomorrow+"").collection("tasks").doc(idTask);
-
+    const refNewTask= admin.firestore().collection("tasks").doc(nextPay+"").collection("tasks").doc(it);
+    batch.set(refNewTask,dataNewTask);
     const dataCredit={                
         creditStatus: "active",
         imageReference:url,
-        idTask: idTask                
+        idTask: it                
     } 
     const refUCredit= admin.firestore().collection("credits").doc(data.id);
-    // Lógica adicional
+    batch.update(refUCredit,dataCredit);
+
+    await batch.commit().then(() => {
+        console.log('Commit del lote exitoso');
+        batch = admin.firestore().batch();            
+    }).catch(error => {
+        console.error('Error al hacer el commit del lote:', error);
+    });
+
+    
 }
 
 
