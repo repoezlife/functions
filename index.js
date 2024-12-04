@@ -1536,10 +1536,14 @@ async function updateZoneCreditsTasks(idCustomer, zona, activeCredits, address, 
                     lon: lon
                 }
                 const refT = admin.firestore().collection(COLLECTION_TASKS).doc(dt.nextPay).collection(COLLECTION_TASKS).doc(dt.idTask);
-                const refC = admin.firestore().collection(COLLECTION_CREDITS).doc(dt.id + "");                   
-                batch.update(refT, dataZone);
-                batch.update(refC, dataZone);
-                cB++;
+                const refC = admin.firestore().collection(COLLECTION_CREDITS).doc(dt.id + "");
+                console.log('refT:' + (await refT.get()).exists);
+                console.log('refC:' + (await refC.get()).exists);
+                if ((await refT.get()).exists && (await refC.get()).exists) {
+                    batch.update(refT, dataZone);
+                    batch.update(refC, dataZone);
+                    cB++;
+                }
             } else {
                 console.log('No se encontraron creditos activos a nombre de ' + idCustomer);
             }            
