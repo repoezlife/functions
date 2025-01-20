@@ -707,8 +707,9 @@ exports.createPay = onDocumentCreated("/payments/{idPay}", (event) => {
         }                
     }    
 });
+/////////// INICIO FUNCIONES PARA SINCRONIZAR EL SISTEMA ANTERIOR DE CREDIEXPRESSS
 
-exports.createCustomer = onDocumentCreated("/customers/{id}", async (event) => {
+exports.createCustomerOldSystem = onDocumentWritten("/customers/{id}", async (event) => {
     const snapshot = event.data;
     if (!snapshot) {
         console.log("No data associated with the event");
@@ -739,7 +740,7 @@ exports.createCustomer = onDocumentCreated("/customers/{id}", async (event) => {
     await ref.set(dataCustomer);   
 });
 
-exports.createCredit = onDocumentWritten("/credits/{id}", async (event) => {
+exports.createCreditOldSystem = onDocumentWritten("/credits/{id}", async (event) => {
     const snapshot = event.data.after;
     if (!snapshot) {
         console.log("No data associated with the event");
@@ -779,6 +780,188 @@ exports.createCredit = onDocumentWritten("/credits/{id}", async (event) => {
     }
       
 });
+
+exports.createPayOldSystem = onDocumentWritten("/payments/{idPay}", async (event) => {
+    const snapshot = event.data.after;
+    if (!snapshot) {
+        console.log("No data associated with the event");
+        return;
+    }
+    const data = snapshot.data();
+    let typePay;
+
+    switch(data.type){
+        case "ordinary":
+            typePay="Int-Cap";        
+            break;    
+        case "capital":
+            typePay="Capital";     
+            break;    
+        case "extension":                
+            typePay="Int-Extension";                   
+            break;
+        case "specialInterest":    
+            typePay="Int-Especial";    
+            break;
+        case "interest":    
+            typePay="Interes";  
+            break;
+        case "commissionsPayment":
+        typePay="commissionsPayment";  
+            break;
+
+    }         
+        const d=formatoFecha();
+        const dataPay={
+            capital:data.capitalPart,
+            collector:data.userName,
+            customer:data.idCustomer,
+            date:data.date,
+            id:data.idPay,
+            idCredit:data.idCredit,
+            name:data.customer,
+            type:typePay,
+            utility:data.utilityPart,
+            value:data.valuePay,
+            zone:0
+        }
+        const ref = realtimeDatabaseB.ref('pays_new_system').child(data.idPay);
+        await ref.set(dataCredit);         
+});
+
+// Configuración de lotes
+const BATCH_SIZE = 400;
+
+/**
+ * Función para replicar datos de Firestore a Realtime Database en lotes de 400
+ */
+exports.replicateCustomersToRealtime = onRequest(async (req, res) => {
+  try {
+    const customersRef = admin.firestore().collection("customers");
+    const querySnapshot = await customersRef.get();
+
+    if (querySnapshot.empty) {
+      res.status(200).send("No se encontraron documentos en la colección 'customers'.");
+      return;
+    }
+
+    const documents = [];
+    querySnapshot.forEach(doc => documents.push({ id: doc.id, ...doc.data() }));
+
+    // Dividir documentos en lotes de 400
+    const batches = [];
+    for (let i = 0; i < documents.length; i += BATCH_SIZE) {
+      batches.push(documents.slice(i, i + BATCH_SIZE));
+    }
+
+    // Procesar lotes en serie
+    for (const batch of batches) {
+      const updates = {};
+      batch.forEach(data => {
+        const ad1 = data.address?.address1?.address || "";
+        const ad2 = ""; // Aquí puedes manejar address2 si aplica
+        const ref8 = data.reference || "";
+
+        const dataCustomer = {
+          name: data.name?.name || "",
+          lastName: data.name?.lastName || "",
+          id: data.id,
+          cell: data.cell?.cell1 || "",
+          addressHouse: ad1,
+          address2: ad2,
+          zone: data.zone || "",
+          route: "1",
+          reference: ref8,
+          valorCredito: 0,
+          tiempoCredito: data.creditTime.maximum || 0,
+          porcentajeCredito: data.lastPercentage || 0,
+          maxCupo: data.quotas.maximum || 0,
+          comportamientoCredito: data.behavior || ""
+        };
+
+        updates[`/customers/${data.id}`] = dataCustomer;
+      });
+
+      // Escritura en Realtime Database
+      const ref = realtimeDatabaseB.ref();
+      await ref.update(updates);
+    }
+
+    res.status(200).send("Datos replicados exitosamente a Realtime Database.");
+  } catch (error) {
+    console.error("Error replicando datos:", error);
+    res.status(500).send("Ocurrió un error al replicar los datos.");
+  }
+});
+
+exports.replicateCreditsToRealtime = onRequest(async (req, res) => {
+    try {
+      const customersRef = admin.firestore().collection("credits");
+      const querySnapshot = await customersRef.get();
+  
+      if (querySnapshot.empty) {
+        res.status(200).send("No se encontraron documentos en la colección 'customers'.");
+        return;
+      }
+  
+      const documents = [];
+      querySnapshot.forEach(doc => documents.push({ id: doc.id, ...doc.data() }));
+  
+      // Dividir documentos en lotes de 400
+      const batches = [];
+      for (let i = 0; i < documents.length; i += BATCH_SIZE) {
+        batches.push(documents.slice(i, i + BATCH_SIZE));
+      }
+  
+      // Procesar lotes en serie
+      for (const batch of batches) {
+        const updates = {};
+        batch.forEach(data => {
+
+            if(data.creditStatus == "active"){
+                const d=formatoFecha();
+                const dataCredit={
+                    idCredit:data.id,
+                    date:d,
+                    customer:data.customerId,
+                    name:data.name + data.lastName,
+                    value:data.value,
+                    percentage:data.percentage,
+                    time: data.timeCredit,
+                    numberFee: data.numberFee,
+                    valueFee: data.valueFee,
+                    totalPay: data.totalPay,
+                    utilityPartial:data.utilityPartial,
+                    utilityCredit:data.utilityCredit,
+                    capitaltoPay:data.capitalToPay,
+                    utilitytoPay:data.utilityToPay,
+                    balance:data.balance,
+                    nextPay:data.nextPay,
+                    day:"Manana",
+                    creditStatus:1,
+                    route:"1",
+                    address2:data.address,
+                    zone:data.zone,
+                    by:data.idUser,
+                    cell:data.cellphone
+                }
+                updates[`/credits/${data.id}`] = dataCredit;
+            }
+        });
+  
+        // Escritura en Realtime Database
+        const ref = realtimeDatabaseB.ref();
+        await ref.update(updates);
+      }
+  
+      res.status(200).send("Datos replicados exitosamente a Realtime Database.");
+    } catch (error) {
+      console.error("Error replicando datos:", error);
+      res.status(500).send("Ocurrió un error al replicar los datos.");
+    }
+  });
+
+/////////// FIN FUNCIONES PARA SINCRONIZAR EL SISTEMA ANTERIOR DE CREDIEXPRESSS
 
 /**
  * On Document Deleted (payment)
@@ -1130,9 +1313,7 @@ async function enviarLinkYId(url, id, idTask, dateDisburse, nextPay) {
         batch = admin.firestore().batch();            
     }).catch(error => {
         console.error('Error al hacer el commit del lote:', error);
-    });
-
-    
+    });    
 }
 
 
@@ -1159,11 +1340,11 @@ exports.sendDataCredit = onRequest(async (request, response) => {
     }
     else{
         response.status(200).send('No hay ID');    
-    }
-    
+    }    
     
 });
-exports.reviewDateCredits = onRequest(async (request, response) => {
+
+exports.reviewDateCredits = onRequest(async (request, response) => {//pasar para mañana los créditos con task pasadas
     try {
         const refCredits = admin.firestore().collection("credits").where("creditStatus", "!=", "finished");
         const snapshot = await refCredits.get();
@@ -1406,7 +1587,7 @@ exports.updateStateCredits = onSchedule(
 );
 
 
-exports.updateActiveCreditsForAllCustomers = onSchedule(
+exports.updateActiveCreditsForAllCustomers = onSchedule( // actualizar la variable active credits de todos los clientes
     {schedule: 'every day 05:00', timeZone: 'America/Bogota'},
     async (event) => {
 
@@ -1758,7 +1939,7 @@ exports.deleteTasksRepeters = onRequest(async (request, response) => {
 });
 
 
-exports.createTasks = onRequest(async (request, response) => {
+exports.createTasks = onRequest(async (request, response) => { // crear las task de todos los créditos
     const refCredits = admin.firestore().collection("credits").where("creditStatus", "!=", "finished");
     const snapshot = await refCredits.get();
     if (snapshot.empty) {
