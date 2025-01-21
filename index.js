@@ -709,15 +709,15 @@ exports.createPay = onDocumentCreated("/payments/{idPay}", (event) => {
 });
 /////////// INICIO FUNCIONES PARA SINCRONIZAR EL SISTEMA ANTERIOR DE CREDIEXPRESSS
 
-exports.createCustomerOldSystem = onDocumentWritten("/customers/{id}", async (event) => {
-    const snapshot = event.data;
+exports.updateCustomerOldSystem = onDocumentWritten("/customers/{id}", async (event) => {
+    const snapshot = event.data.after;
     if (!snapshot) {
         console.log("No data associated with the event");
         return;
     }
     const data = snapshot.data();
     const ad1=data.address.address1.address || "";
-    const ad2="";//data.address.address2.address || "";
+    const ad2=data.address.address1.address || "";
     const ref8 =data.reference || "";
 
     const dataCustomer={
@@ -736,11 +736,11 @@ exports.createCustomerOldSystem = onDocumentWritten("/customers/{id}", async (ev
         maxCupo:0,
         comportamientoCredito:"nuevo"
     }
-    const ref = realtimeDatabaseB.ref('customers_new_system').child(data.id);
+    const ref = realtimeDatabaseB.ref('customers').child(data.id);
     await ref.set(dataCustomer);   
 });
 
-exports.createCreditOldSystem = onDocumentWritten("/credits/{id}", async (event) => {
+exports.updateCreditOldSystem = onDocumentWritten("/credits/{id}", async (event) => {
     const snapshot = event.data.after;
     if (!snapshot) {
         console.log("No data associated with the event");
@@ -748,8 +748,14 @@ exports.createCreditOldSystem = onDocumentWritten("/credits/{id}", async (event)
     }
     const data = snapshot.data();
 
-    if(data.creditStatus == "active"){
-        const d=formatoFecha();
+         const d=formatoFecha();
+         let estadoCredito=1;
+          
+        if(data.creditStatus == "finished" ||  data.creditStatus == "pending"){
+                estadoCredito=0;
+        }
+
+
         const dataCredit={
             idCredit:data.id,
             date:d,
@@ -768,20 +774,20 @@ exports.createCreditOldSystem = onDocumentWritten("/credits/{id}", async (event)
             balance:data.balance,
             nextPay:data.nextPay,
             day:"Manana",
-            creditStatus:1,
+            creditStatus:estadoCredito,
             route:"1",
             address2:data.address,
             zone:data.zone,
             by:data.idUser,
             cell:data.cellphone
         }
-        const ref = realtimeDatabaseB.ref('credits_new_system').child(data.id);
+        const ref = realtimeDatabaseB.ref('credits').child(data.id);
         await ref.set(dataCredit);
-    }
+    
       
 });
 
-exports.createPayOldSystem = onDocumentWritten("/payments/{idPay}", async (event) => {
+exports.updatePayOldSystem = onDocumentWritten("/payments/{idPay}", async (event) => {
     const snapshot = event.data.after;
     if (!snapshot) {
         console.log("No data associated with the event");
@@ -812,21 +818,23 @@ exports.createPayOldSystem = onDocumentWritten("/payments/{idPay}", async (event
 
     }         
         const d=formatoFecha();
+        let idCre=data.idCredit.split(" "); 
+
         const dataPay={
             capital:data.capitalPart,
             collector:data.userName,
             customer:data.idCustomer,
             date:data.date,
             id:data.idPay,
-            idCredit:data.idCredit,
+            idCredit:idCre[0],
             name:data.customer,
             type:typePay,
             utility:data.utilityPart,
             value:data.valuePay,
             zone:0
         }
-        const ref = realtimeDatabaseB.ref('pays_new_system').child(data.idPay);
-        await ref.set(dataCredit);         
+        const ref = realtimeDatabaseB.ref('pays').child(data.idPay);
+        await ref.set(dataPay);         
 });
 
 // Configuración de lotes
@@ -859,7 +867,7 @@ exports.replicateCustomersToRealtime = onRequest(async (req, res) => {
       const updates = {};
       batch.forEach(data => {
         const ad1 = data.address?.address1?.address || "";
-        const ad2 = ""; // Aquí puedes manejar address2 si aplica
+        const ad2 = data.address?.address1?.address || ""; // Aquí puedes manejar address2 si aplica
         const ref8 = data.reference || "";
 
         const dataCustomer = {
@@ -917,11 +925,17 @@ exports.replicateCreditsToRealtime = onRequest(async (req, res) => {
       for (const batch of batches) {
         const updates = {};
         batch.forEach(data => {
+            let estadoCredito=1;
+            let idCre=data.id.split(" ");
+            
+            
 
-            if(data.creditStatus == "active"){
+            if(data.creditStatus == "finished" ||  data.creditStatus == "pending"){
+                estadoCredito=0;
+            }
                 const d=formatoFecha();
                 const dataCredit={
-                    idCredit:data.id,
+                    idCredit:idCre[0],
                     date:d,
                     customer:data.customerId,
                     name:data.name + data.lastName,
@@ -935,18 +949,18 @@ exports.replicateCreditsToRealtime = onRequest(async (req, res) => {
                     utilityCredit:data.utilityCredit,
                     capitaltoPay:data.capitalToPay,
                     utilitytoPay:data.utilityToPay,
-                    balance:data.balance,
+                    balance:data.balance || 0 ,
                     nextPay:data.nextPay,
                     day:"Manana",
-                    creditStatus:1,
+                    creditStatus:estadoCredito,
                     route:"1",
                     address2:data.address,
-                    zone:data.zone,
+                    zone:data.zone || 0,
                     by:data.idUser,
                     cell:data.cellphone
                 }
-                updates[`/credits/${data.id}`] = dataCredit;
-            }
+                updates[`/credits/${idCre[0]}`] = dataCredit;
+            
         });
   
         // Escritura en Realtime Database
@@ -960,6 +974,91 @@ exports.replicateCreditsToRealtime = onRequest(async (req, res) => {
       res.status(500).send("Ocurrió un error al replicar los datos.");
     }
   });
+
+exports.replicatePaymentsToRealtime = onRequest(async (req, res) => {
+    try {
+      const customersRef = admin.firestore().collection("payments");
+      const querySnapshot = await customersRef.get();
+  
+      if (querySnapshot.empty) {
+        res.status(200).send("No se encontraron documentos en la colección 'customers'.");
+        return;
+      }
+  
+      const documents = [];
+      querySnapshot.forEach(doc => documents.push({ id: doc.idPay, ...doc.data() }));
+  
+      // Dividir documentos en lotes de 400
+      const batches = [];
+      for (let i = 0; i < documents.length; i += BATCH_SIZE) {
+        batches.push(documents.slice(i, i + BATCH_SIZE));
+      }
+  
+      // Procesar lotes en serie
+      for (const batch of batches) {
+        const updates = {};
+        batch.forEach(data => {
+
+            let typePay;
+
+            switch(data.type){
+                case "ordinary":
+                    typePay="Int-Cap";        
+                    break;    
+                case "capital":
+                    typePay="Capital";     
+                    break;    
+                case "extension":                
+                    typePay="Int-Extension";                   
+                    break;
+                case "specialInterest":    
+                    typePay="Int-Especial";    
+                    break;
+                case "interest":    
+                    typePay="Interes";  
+                    break;
+                case "commissionsPayment":
+                typePay="commissionsPayment";  
+                    break;
+        
+            } 
+            let idCre=data.idCredit.split(" "); 
+
+                const d=formatoFecha();
+                const dataPay={
+                    capital:data.capitalPart,
+                    collector:data.userName,
+                    customer:data.idCustomer,
+                    date:data.date,
+                    id:data.idPay,
+                    idCredit:idCre[0],
+                    name:data.customer,
+                    type:typePay,
+                    utility:data.utilityPart,
+                    value:data.valuePay,
+                    zone:0
+                }
+                          
+            
+                   
+            
+
+            updates[`/pays/${idCre[0]}`] = dataPay;
+            
+        });
+  
+        // Escritura en Realtime Database
+        const ref = realtimeDatabaseB.ref();
+        await ref.update(updates);
+      }
+  
+      res.status(200).send("Datos replicados exitosamente a Realtime Database.");
+    } catch (error) {
+      console.error("Error replicando datos:", error);
+      res.status(500).send("Ocurrió un error al replicar los datos.");
+    }
+  });
+
 
 /////////// FIN FUNCIONES PARA SINCRONIZAR EL SISTEMA ANTERIOR DE CREDIEXPRESSS
 
