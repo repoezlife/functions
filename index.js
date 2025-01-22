@@ -1386,7 +1386,7 @@ async function enviarLinkYId(url, id, idTask, dateDisburse, nextPay) {
         lat: data.lat,
         lon: data.lon,
         type: "creditToCollect",
-        idUser: data.customerId,
+        idUser: "10617706419",
         phone: data.cellphone,
         zone:data.zone,
         name: data.name,
@@ -1395,9 +1395,10 @@ async function enviarLinkYId(url, id, idTask, dateDisburse, nextPay) {
         stateTask: "pending",
         userWhoModified:null,
         creditStatus:data.creditStatus,
-        valueDisburse:null
+        valueDisburse:null,
+        virtual:true
     }    
-    const refNewTask= admin.firestore().collection("tasks").doc(nextPay+"").collection("tasks").doc(it);
+    const refNewTask= admin.firestore().collection("tasks").doc(data.nextPay+"").collection("tasks").doc(it);
     batch.set(refNewTask,dataNewTask);
     const dataCredit={                
         creditStatus: "active",
@@ -1406,6 +1407,15 @@ async function enviarLinkYId(url, id, idTask, dateDisburse, nextPay) {
     } 
     const refUCredit= admin.firestore().collection("credits").doc(data.id);
     batch.update(refUCredit,dataCredit);
+
+    const dataTaskDisburse={    
+        stateTask: "completed",
+        userWhoModified:"virtualCredit"          
+                      
+    } 
+
+    const refOldTask = admin.firestore().collection("tasks").doc(dateDisburse+"").collection("tasks").doc(idTask);
+    batch.update(refOldTask,dataTaskDisburse);
 
     await batch.commit().then(() => {
         console.log('Commit del lote exitoso');
