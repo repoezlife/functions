@@ -1795,15 +1795,19 @@ function parseFecha(fechaStr) {
 // Reg: Credits Auxiliar Functions ---------------------------------------------------------
 /**
  * Update Zone to Credits and Tasks
- * @param idCustomer 
- * @param zona 
- * @param activeCredits 
- * @param address 
- * @param lat 
- * @param lon 
+ * @param customerData
  * @returns 
  */
-async function updateZoneCreditsTasks(idCustomer, zona, activeCredits, address, lat, lon){
+async function updateZoneCreditsTasks(customerData){
+    console.log(customerData);
+    let idCustomer = customerData.id;
+    let zona = customerData.zone;
+    let activeCredits = customerData.activeCredits;
+    let address = customerData.address.address1.address;
+    let lat = customerData.address.address1.lat;
+    let lon = customerData.address.address1.lon;
+    let name = customerData.name.name;
+    let lastName = customerData.name.lastName;
     console.log("Update Credits and task,  " + idCustomer + "  " + zona + "  " + activeCredits);
     
     const refCredits = admin.firestore().collection(COLLECTION_CREDITS);
@@ -1820,6 +1824,8 @@ async function updateZoneCreditsTasks(idCustomer, zona, activeCredits, address, 
                 console.log("UpdateCredit: " + dt.id + "  UpdateTask: " + dt.nextPay + "/" + dt.idTask);
 
                 const dataZone = {
+                    name: name,
+                    lastName: lastName,
                     zone: zona,
                     address: address,
                     lat: lat,
@@ -2386,13 +2392,14 @@ exports.updateCustomer = onDocumentUpdated("/customers/{id}", async (event) => {
     
     if (customerData.address.address1.lat != customerDataBf.address.address1.lat 
         || customerData.address.address1.lon != customerDataBf.address.address1.lon 
-         || customerData.zone != customerDataBf.zone) {
+         || customerData.zone != customerDataBf.zone
+          || customerData.name.name != customerDataBf.name.name
+           || customerData.lastName.lastName != customerDataBf.lastName.lastName) {
         getZoneByCustomer(customerData).then(zoneCustomer => {
             console.log('Zona del customer:' + customerData.id + '::' + zoneCustomer);
             customerData.zone = zoneCustomer;
             saveCustomer(customerData).then(() => {
-                updateZoneCreditsTasks(customerData.id, customerData.zone, customerData.activeCredits,
-                 customerData.address.address1.address, customerData.address.address1.lat, customerData.address.address1.lon);
+                updateZoneCreditsTasks(customerData);
             });
         });
     }
