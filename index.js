@@ -131,8 +131,10 @@ async function distTasks(date) {
         
         snapshot.forEach(doc => {
             const f=doc.data();
+           // const dirección= doc.address.split;
             console.log(f.id + " -*- "+f.zone);
             if(f.stateTask === 'pending'){
+
                 idTasks.push(doc.id);
             }            
           });
@@ -2393,6 +2395,10 @@ exports.updateCustomer = onDocumentUpdated("/customers/{id}", async (event) => {
     
     if (customerData.address.address1.lat != customerDataBf.address.address1.lat 
         || customerData.address.address1.lon != customerDataBf.address.address1.lon 
+        || customerData.address.address1.address != customerDataBf.address.address1.address
+        || customerData.address.address2.address != customerDataBf.address.address2.address
+        || customerData.address.address1.address != customerDataBf.address.address1.freeReference
+        || customerData.address.address2.address != customerDataBf.address.address2.freeReference
          || customerData.zone != customerDataBf.zone
           || customerData.name.name != customerDataBf.name.name
            || customerData.lastName.lastName != customerDataBf.lastName.lastName) {
