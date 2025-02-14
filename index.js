@@ -103,10 +103,12 @@ exports.distributeTasks = onSchedule(
 async function distTasks(date) {
     let band=true;
     let band2=true;
+    let band3=false;
     let nCobs=0;
     let nTasks=0;
     const idCobs = [];
     const idTasks = [];
+    const idVirtualTasks = [];
     let factor1=0;
     let factor2=0;
     let residuo=0;
@@ -131,11 +133,16 @@ async function distTasks(date) {
         
         snapshot.forEach(doc => {
             const f=doc.data();
-           // const dirección= doc.address.split;
-            console.log(f.id + " -*- "+f.zone);
+            const dir= f.address.split(",");
+            console.log(f.id + " -*- "+f.zone +"  Tipo credito: "+dir[3]);
             if(f.stateTask === 'pending'){
-
-                idTasks.push(doc.id);
+                if(dir[3] === "VIRTUAL"){
+                    idVirtualTasks.push(doc.id);
+                    band3=true;
+                }
+                else{
+                    idTasks.push(doc.id);
+                }
             }            
           });
           nTasks=idTasks.length;
@@ -144,6 +151,32 @@ async function distTasks(date) {
         console.log('No hay tareas para '+date);
         band=false;
         return;
+    }
+    if(band3){ //si hay créditos virtuales
+        let cont5=0; 
+                    for(u; u<idVirtualTasks.length;u++){
+                        const ref=refTasks.doc(idVirtualTasks[u]+"");
+                        const dataT={
+                            idUser:"10617706419"
+                        }
+                        batch.update(ref, dataT);
+                        cont5++;
+                        console.log(u+". "+ "  "+idTasks[u]+ "  "+idCobs[i] +"  i:"+i);
+
+                        if(cont5>=500){
+                            console.log('Ingreso al IF  cont=== 500');
+                                await batch.commit()
+                                    .then(() => {
+                                    console.log('Commit del lote exitoso');
+                                    batch = admin.firestore().batch();
+                                    contBatch=0;
+            
+                                })
+                                .catch(error => {
+                                    console.error('Error al hacer el commit del lote:', error);
+                                });                
+                        } 
+                    }
     }
 
     if(band){
