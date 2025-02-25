@@ -2173,34 +2173,40 @@ exports.createTasks = onRequest(async (request, response) => { // crear las task
     response.status(200).send('Tareas creadas exitosamente.');
 });
 
-exports.deletePendingTasks = onRequest(async (request, response) => {
+exports.deletePendingTasks = onRequest({ cors: true }, async (request, response) => {
     try {
-        // Obtener todas las tareas con estado "pending"
-        const refTasks = admin.firestore().collection(COLLECTION_TASKS).doc(formatoFecha()).collection(COLLECTION_TASKS);
-        const snapshot = await refTasks.where("stateTask", "==", "pending").get();
-    
-        if (snapshot.empty) {
-            console.log('No pending tasks found.');
-            return response.status(200).send('No pending tasks found.');
+        const bodyData = request.body;
+        const deleteCode = 'admin_CrediTaks_0025';
+        if (bodyData.deletecode == deleteCode) {
+            // Obtener todas las tareas con estado "pending"
+            const refTasks = admin.firestore().collection(COLLECTION_TASKS).doc(formatoFecha()).collection(COLLECTION_TASKS);
+            const snapshot = await refTasks.where("stateTask", "==", "pending").get();
+        
+            if (snapshot.empty) {
+                console.log('No pending tasks found.');
+                return response.status(200).send('No pending tasks found.');
+            }
+        
+            // Crear un batch para eliminar las tareas
+            let batch = admin.firestore().batch();
+            let countBatch = 0;
+            let totalDeleted = 0;
+        
+            snapshot.forEach(doc => {
+                const taskRef = refTasks.doc(doc.id);
+                batch.delete(taskRef); // Eliminar la tarea
+                totalDeleted++;
+                countBatch++;            
+            });
+        
+            // Hacer commit del último batch si es necesario
+            if (countBatch > 0) {
+                await batch.commit().then(() => console.log('Final batch commit successful'));
+            }    
+            response.status(200).json(`Successfully deleted ${totalDeleted} pending tasks.`);
+        } else {
+            response.status(401).json(`Códgo de eliminación incorrecto.`);
         }
-    
-        // Crear un batch para eliminar las tareas
-        let batch = admin.firestore().batch();
-        let countBatch = 0;
-        let totalDeleted = 0;
-    
-        snapshot.forEach(doc => {
-            const taskRef = refTasks.doc(doc.id);
-            batch.delete(taskRef); // Eliminar la tarea
-            totalDeleted++;
-            countBatch++;            
-        });
-    
-        // Hacer commit del último batch si es necesario
-        if (countBatch < 15 && countBatch > 0) {
-            await batch.commit().then(() => console.log('Final batch commit successful'));
-        }    
-        response.status(200).send(`Successfully deleted ${totalDeleted} pending tasks.`);
     } catch (error) {
         console.error('Error deleting pending tasks:', error);
         response.status(500).send('Error deleting pending tasks.');
