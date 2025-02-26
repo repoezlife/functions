@@ -134,11 +134,16 @@ async function distTasks(date) {
         snapshot.forEach(doc => {
             const f=doc.data();
             const dir= f.address.split(",");
-            console.log(f.id + " -*- "+f.zone +"  Tipo credito: "+dir[3]);
+            console.log(f.address+"   "+dir[2]);
+
+            console.log(f.id + " -*- "+f.zone +"  Tipo credito: "+dir[2]);
+
             if(f.stateTask === 'pending'){
                 if(dir[3] === "VIRTUAL"){
                     idVirtualTasks.push(doc.id);
                     band3=true;
+                    console.log("Crédito virtual: "+f.id+"  "+f.name );
+
                 }
                 else{
                     idTasks.push(doc.id);
@@ -161,7 +166,7 @@ async function distTasks(date) {
                         }
                         batch.update(ref, dataT);
                         cont5++;
-                        console.log(u+". "+ "  "+idTasks[u]+ "  "+idCobs[i] +"  i:"+i);
+                        console.log("VIRTUAL:    "+u+". "+ "  "+idTasks[u]+ "  "+idCobs[i] +"  i:"+i);
 
                         if(cont5>=500){
                             console.log('Ingreso al IF  cont=== 500');
@@ -1002,6 +1007,9 @@ exports.replicateCreditsToRealtime = onRequest(async (req, res) => {
         // Escritura en Realtime Database
         const ref = realtimeDatabaseB.ref();
         await ref.update(updates);
+
+        await replicatePaymentsActiveCredits(documents);
+
       }
   
       res.status(200).send("Datos replicados exitosamente a Realtime Database.");
@@ -1010,6 +1018,82 @@ exports.replicateCreditsToRealtime = onRequest(async (req, res) => {
       res.status(500).send("Ocurrió un error al replicar los datos.");
     }
   });
+
+  async function replicatePaymentsActiveCredits(documents) {
+    try {
+      for (const document of documents) {
+        const idCre = document.id.split(" ");
+        console.log(`Buscando pagos para el crédito ID: ${idCre[0]}`);
+  
+        // Consulta los pagos en Firestore asociados al crédito
+        const paymentsRef = admin.firestore().collection("payments").where("idCredit", "==", document.id);
+        const paymentsSnapshot = await paymentsRef.get();
+  
+        if (paymentsSnapshot.empty) {
+          console.log(`No se encontraron pagos para el crédito ID: ${idCre[0]}`);
+          continue;
+        }
+  
+        const payments = [];
+        paymentsSnapshot.forEach(doc => {
+          payments.push({ id: doc.id, ...doc.data() });
+        });
+  
+        // Preparar los datos de pagos para enviar a Realtime Database
+        const updates = {};
+        payments.forEach(data => {
+            let typePay;
+
+            switch(data.type){
+                case "ordinary":
+                    typePay="Int-Cap";        
+                    break;    
+                case "capital":
+                    typePay="Capital";     
+                    break;    
+                case "extension":                
+                    typePay="Int-Extension";                   
+                    break;
+                case "specialInterest":    
+                    typePay="Int-Especial";    
+                    break;
+                case "interest":    
+                    typePay="Interes";  
+                    break;
+                case "commissionsPayment":
+                typePay="commissionsPayment";  
+                    break;
+        
+            } 
+            
+                const d=formatoFecha();
+                const dataPay={
+                    capital:data.capitalPart,
+                    collector:data.userName,
+                    customer:data.idCustomer,
+                    date:data.date,
+                    id:data.idPay,
+                    idCredit:idCre[0],
+                    name:data.customer,
+                    type:typePay,
+                    utility:data.utilityPart,
+                    value:data.valuePay,
+                    zone:0
+                }                  
+            updates[`/pays/${data.idPay}`] = dataPay;
+        });
+  
+        // Escritura en Realtime Database
+        const ref = realtimeDatabaseB.ref();
+        await ref.update(updates);
+  
+        console.log(`Pagos replicados exitosamente para el crédito ID: ${idCre[0]}`);
+      }
+    } catch (error) {
+      console.error("Error replicando pagos:", error);
+    }
+  }
+  
 
 exports.replicatePaymentsToRealtime = onRequest(async (req, res) => {
     try {
@@ -1079,7 +1163,7 @@ exports.replicatePaymentsToRealtime = onRequest(async (req, res) => {
                    
             
 
-            updates[`/pays/${idCre[0]}`] = dataPay;
+            updates[`/pays/${data.idPay}`] = dataPay;
             
         });
   
