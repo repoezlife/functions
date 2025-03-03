@@ -2718,7 +2718,7 @@ exports.getTaskBydateRange = onRequest({ cors: true }, async (req, res) => {
     try {
         const bodyData = req.body;        
         res.status(200).json({
-            result: await getTaksByIdInDate(bodyData.idTask, bodyData.year)
+            result: await getTaksByIdInDate(bodyData.idTask)
         });
     } catch (error) {
         console.log('entrando en exception');
