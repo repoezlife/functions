@@ -134,11 +134,16 @@ async function distTasks(date) {
         snapshot.forEach(doc => {
             const f=doc.data();
             const dir= f.address.split(",");
-            console.log(f.id + " -*- "+f.zone +"  Tipo credito: "+dir[3]);
+            console.log(f.address+"   "+dir[2]);
+
+            console.log(f.id + " -*- "+f.zone +"  Tipo credito: "+dir[2]);
+
             if(f.stateTask === 'pending'){
                 if(dir[3] === "VIRTUAL"){
                     idVirtualTasks.push(doc.id);
                     band3=true;
+                    console.log("Crédito virtual: "+f.id+"  "+f.name );
+
                 }
                 else{
                     idTasks.push(doc.id);
@@ -161,7 +166,7 @@ async function distTasks(date) {
                         }
                         batch.update(ref, dataT);
                         cont5++;
-                        console.log(u+". "+ "  "+idTasks[u]+ "  "+idCobs[i] +"  i:"+i);
+                        console.log("VIRTUAL:    "+u+". "+ "  "+idTasks[u]+ "  "+idCobs[i] +"  i:"+i);
 
                         if(cont5>=500){
                             console.log('Ingreso al IF  cont=== 500');
@@ -938,70 +943,77 @@ exports.replicateCustomersToRealtime = onRequest(async (req, res) => {
   }
 });
 
-exports.replicateCreditsToRealtime = onRequest(async (req, res) => {
+exports.replicateCreditsToRealtime = onRequest({ timeoutSeconds: 540 }, async (req, res) => { // Aumentar el tiempo de espera a 9 minutos (540 segundos)
     try {
       const customersRef = admin.firestore().collection("credits");
       const querySnapshot = await customersRef.get();
   
       if (querySnapshot.empty) {
-        res.status(200).send("No se encontraron documentos en la colección 'customers'.");
+        res.status(200).send("No se encontraron documentos en la colección 'credits'.");
         return;
       }
   
       const documents = [];
       querySnapshot.forEach(doc => documents.push({ id: doc.id, ...doc.data() }));
   
-      // Dividir documentos en lotes de 400
+      // Dividir documentos en lotes más pequeños de 100 (por ejemplo)
+      const BATCH_SIZE = 100;
       const batches = [];
       for (let i = 0; i < documents.length; i += BATCH_SIZE) {
         batches.push(documents.slice(i, i + BATCH_SIZE));
       }
   
-      // Procesar lotes en serie
+      // Procesar lotes en paralelo con Promise.all()
       for (const batch of batches) {
-        const updates = {};
-        batch.forEach(data => {
-            let estadoCredito=1;
-            let idCre=data.id.split(" ");
-            
-            
-
-            if(data.creditStatus == "finished" ||  data.creditStatus == "pending"){
-                estadoCredito=0;
-            }
-                const d=formatoFecha();
-                const dataCredit={
-                    idCredit:idCre[0],
-                    date:d,
-                    customer:data.customerId,
-                    name:data.name + data.lastName,
-                    value:data.value,
-                    percentage:data.percentage,
-                    time: data.timeCredit,
-                    numberFee: data.numberFee,
-                    valueFee: data.valueFee,
-                    totalPay: data.totalPay,
-                    utilityPartial:data.utilityPartial,
-                    utilityCredit:data.utilityCredit,
-                    capitaltoPay:data.capitalToPay,
-                    utilitytoPay:data.utilityToPay,
-                    balance:data.balance || 0 ,
-                    nextPay:data.nextPay,
-                    day:"Manana",
-                    creditStatus:estadoCredito,
-                    route:"1",
-                    address2:data.address,
-                    zone:data.zone || 0,
-                    by:data.idUser,
-                    cell:data.cellphone
-                }
-                updates[`/credits/${idCre[0]}`] = dataCredit;
-            
+        const promises = batch.map(async data => {
+          let estadoCredito = 1;
+          let idCre = data.id.split(" ");
+  
+          if (data.creditStatus === "finished" || data.creditStatus === "pending") {
+            estadoCredito = 0;
+          }
+  
+          const d = formatoFecha();
+          const dataCredit = {
+            idCredit: idCre[0],
+            date: d,
+            customer: data.customerId,
+            name: data.name + data.lastName,
+            value: data.value,
+            percentage: data.percentage,
+            time: data.timeCredit,
+            numberFee: data.numberFee,
+            valueFee: data.valueFee,
+            totalPay: data.totalPay,
+            utilityPartial: data.utilityPartial,
+            utilityCredit: data.utilityCredit,
+            capitaltoPay: data.capitalToPay,
+            utilitytoPay: data.utilityToPay,
+            balance: data.balance || 0,
+            nextPay: data.nextPay,
+            day: "Manana",
+            creditStatus: estadoCredito,
+            route: "1",
+            address2: data.address,
+            zone: data.zone || 0,
+            by: data.idUser,
+            cell: data.cellphone
+          };
+  
+          const updates = {};
+          updates[`/credits/${idCre[0]}`] = dataCredit;
+  
+          // Escritura en Realtime Database
+          const ref = realtimeDatabaseB.ref();
+          await ref.update(updates);
+  
+          // Replicar pagos asociados al crédito
+          await replicatePaymentsActiveCredits([data]);
+  
         });
   
-        // Escritura en Realtime Database
-        const ref = realtimeDatabaseB.ref();
-        await ref.update(updates);
+        // Esperar que todos los documentos del lote se procesen antes de continuar
+        await Promise.all(promises);
       }
   
       res.status(200).send("Datos replicados exitosamente a Realtime Database.");
@@ -1010,6 +1022,81 @@ exports.replicateCreditsToRealtime = onRequest(async (req, res) => {
       res.status(500).send("Ocurrió un error al replicar los datos.");
     }
   });
+  
+  async function replicatePaymentsActiveCredits(documents) {
+    try {
+      const promises = documents.map(async document => {
+        const idCre = document.id.split(" ");
+        console.log(`Buscando pagos para el crédito ID: ${idCre[0]}`);
+  
+        // Consulta los pagos en Firestore asociados al crédito
+        const paymentsRef = admin.firestore().collection("payments").where("idCredit", "==", document.id);
+        const paymentsSnapshot = await paymentsRef.get();
+  
+        if (paymentsSnapshot.empty) {
+          console.log(`No se encontraron pagos para el crédito ID: ${idCre[0]}`);
+          return;
+        }
+  
+        const updates = {};
+        paymentsSnapshot.forEach(doc => {
+          const data = doc.data();
+          let typePay;
+  
+          switch (data.type) {
+            case "ordinary":
+              typePay = "Int-Cap";
+              break;
+            case "capital":
+              typePay = "Capital";
+              break;
+            case "extension":
+              typePay = "Int-Extension";
+              break;
+            case "specialInterest":
+              typePay = "Int-Especial";
+              break;
+            case "interest":
+              typePay = "Interes";
+              break;
+            case "commissionsPayment":
+              typePay = "commissionsPayment";
+              break;
+          }
+  
+          const d = formatoFecha();
+          const dataPay = {
+            capital: data.capitalPart,
+            collector: data.userName,
+            customer: data.idCustomer,
+            date: data.date,
+            id: data.idPay,
+            idCredit: idCre[0],
+            name: data.customer,
+            type: typePay,
+            utility: data.utilityPart,
+            value: data.valuePay,
+            zone: 0
+          };
+  
+          updates[`/pays/${data.idPay}`] = dataPay;
+        });
+  
+        // Escritura en Realtime Database
+        const ref = realtimeDatabaseB.ref();
+        await ref.update(updates);
+  
+        console.log(`Pagos replicados exitosamente para el crédito ID: ${idCre[0]}`);
+      });
+  
+      // Esperar a que todas las promesas de pagos se completen
+      await Promise.all(promises);
+    } catch (error) {
+      console.error("Error replicando pagos:", error);
+    }
+  }
+  
+  
 
 exports.replicatePaymentsToRealtime = onRequest(async (req, res) => {
     try {
@@ -1079,7 +1166,7 @@ exports.replicatePaymentsToRealtime = onRequest(async (req, res) => {
                    
             
 
-            updates[`/pays/${idCre[0]}`] = dataPay;
+            updates[`/pays/${data.idPay}`] = dataPay;
             
         });
   
@@ -1495,7 +1582,7 @@ exports.reviewDateCredits = onRequest(async (request, response) => {//pasar para
         const snapshot = await refCredits.get();
         let batch = admin.firestore().batch();
         const hoy = parseFecha(formatoFecha());
-        console.log("Fecha de revisión:  "+hoy);
+        console.log("Fecha de revisión:  "+hoy+"/n");
 
         if (snapshot.empty) {
             console.log('No matching documents.');
@@ -1510,9 +1597,14 @@ exports.reviewDateCredits = onRequest(async (request, response) => {//pasar para
             const tomorrow = (formatoFecha2());
 
             if (nextPay < hoy) {
-                overdueCredits.push(data.name +" "+data.lastName+"/"+data.id); // Agregar a la lista de créditos vencidos
-                const idTask=data.id+"P";
-                console.log(data.id+" "+data.name+" "+ data.nextPay);
+
+
+                    
+                    const idTask=data.id+"P";
+                    console.log(data.id+" "+data.name+" "+ data.nextPay);
+
+                
+                
 
                 if(data.creditStatus == "pending"){
                     const dataNewTask={
@@ -1546,6 +1638,7 @@ exports.reviewDateCredits = onRequest(async (request, response) => {//pasar para
 
                 }
                 else{
+                    overdueCredits.push(data.name +" "+data.lastName+"/"+data.id); // Agregar a la lista de créditos vencidos
                     const dataNewTask={
                         id:idTask,
                         date: tomorrow,
@@ -1588,7 +1681,7 @@ exports.reviewDateCredits = onRequest(async (request, response) => {//pasar para
  */
         // Enviar todos los créditos vencidos en la respuesta
         if (overdueCredits.length > 0) {
-            response.status(200).send("Fecha revisión  "+hoy+"   "+overdueCredits);
+            response.status(200).send("Fecha revisión  "+hoy+":     "+overdueCredits);
             console.log(overdueCredits);
         } else {
             response.status(200).send('No hay créditos con fecha de cobro menor a  '+hoy);
@@ -1631,6 +1724,34 @@ exports.onTaskDeleted = onDocumentDeleted("tasks/{date}/tasks/{id}", async (even
   
     return null; // Es necesario devolver null o una promesa en las funciones asíncronas
   });
+
+  exports.onTaskCreated = onDocumentCreated("tasks/{date}/tasks/{id}", async (event) => {
+    const snap = event.data; // Datos del documento eliminado
+    const deletedTaskData = snap.data(); // Obtener la data del documento eliminado
+    const date = event.params.date; // Fecha capturada del wildcard
+    const taskId = event.params.id; // taskId capturado del wildcard
+    const idCredit = event.params.idCredit; // taskId capturado del wildcard    
+    const name = event.params.name; // taskId capturado del wildcard
+
+    const now = new Date();
+    const formattedDate = now.toLocaleString('es-CO', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false // 24 horas
+    });
+  //  deletedTaskData.dateDelete=formattedDate;
+    console.log(`Task created on date: ${date} with ID: ${taskId} idCredit ${idCredit}  name  ${name}`);  
+    // Aquí puedes realizar las acciones necesarias cuando una tarea es eliminada
+  
+    
+  
+    return null; // Es necesario devolver null o una promesa en las funciones asíncronas
+  });
+
   exports.onCustomerDeleted = onDocumentDeleted("customers/{id}", async (event) => {
     const snap = event.data; // Datos del documento eliminado
     const deletedTaskData = snap.data(); // Obtener la data del documento eliminado
