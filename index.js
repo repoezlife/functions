@@ -2021,7 +2021,7 @@ async function updateCellCreditsTasks(idCustomer, cell, activeCredits){
     console.log("Update Cell in Credits and task,  " + idCustomer + "  " + cell + "  " + activeCredits);
     
     const refCredits = admin.firestore().collection(COLLECTION_CREDITS);
-    const credits = await refCredits.where('customerId', "==", idCustomer).get();
+    const credits = await refCredits.where('customerId', "==", idCustomer).where("creditStatus", "!=", "finished").get();
     let batch = admin.firestore().batch();
     let cB = 0;
 
