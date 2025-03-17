@@ -29,7 +29,6 @@ const appB = initializeApp({
 // Acceder a Realtime Database del Proyecto B
 const realtimeDatabaseB = getDatabase(appB);
 
-
 /**
  * Init Firestore Admin
  */
@@ -129,21 +128,23 @@ async function distTasks(date) {
     console.log("Ruta especial: "+idSpRoute+":  "+nCll);
     const refTasks= admin.firestore().collection("tasks").doc(date).collection("tasks");
     const snapshot = await refTasks.orderBy("zone", "asc").get();
+
     if (!snapshot.empty) {
         
         snapshot.forEach(doc => {
             const f=doc.data();
             const dir= f.address.split(",");
-            console.log(f.address+"   "+dir[2]);
+            const tipoC=dir[2];
+        //    console.log(f.address+"   "+dir[2]);
 
             console.log(f.id + " -*- "+f.zone +"  Tipo credito: "+dir[2]);
 
             if(f.stateTask === 'pending'){
-                if(dir[3] === "VIRTUAL"){
+                if(tipoC && typeof tipoC === 'string' &&tipoC.trim().toUpperCase() === "VIRTUAL"){
+                    console.log("ingresa if virtual");
                     idVirtualTasks.push(doc.id);
                     band3=true;
                     console.log("Crédito virtual: "+f.id+"  "+f.name );
-
                 }
                 else{
                     idTasks.push(doc.id);
@@ -159,6 +160,7 @@ async function distTasks(date) {
     }
     if(band3){ //si hay créditos virtuales
         let cont5=0; 
+        let u=0;
                     for(u; u<idVirtualTasks.length;u++){
                         const ref=refTasks.doc(idVirtualTasks[u]+"");
                         const dataT={
@@ -166,7 +168,7 @@ async function distTasks(date) {
                         }
                         batch.update(ref, dataT);
                         cont5++;
-                        console.log("VIRTUAL:    "+u+". "+ "  "+idTasks[u]+ "  "+idCobs[i] +"  i:"+i);
+                        console.log("VIRTUAL:    "+u+". "+ "  "+idTasks[u] );
 
                         if(cont5>=500){
                             console.log('Ingreso al IF  cont=== 500');
@@ -783,12 +785,19 @@ exports.updateCustomerOldSystem = onDocumentWritten("/customers/{id}", async (ev
 
 exports.updateCreditOldSystem = onDocumentWritten("/credits/{id}", async (event) => {
     const snapshot = event.data.after;
-    if (!snapshot) {
-        console.log("No data associated with the event");
+    
+    if (!snapshot.exists) {
+        console.log("Documento eliminado");
+        const dataCredit={            
+            creditStatus:0            
+        }
+        const ref = realtimeDatabaseB.ref('credits').child(data.id);
+        await ref.set(dataCredit);
+
         return;
     }
-    const data = snapshot.data();
-
+    else{
+        const data = snapshot.data();
          const d=formatoFecha();
          let estadoCredito=1;
           
@@ -801,7 +810,7 @@ exports.updateCreditOldSystem = onDocumentWritten("/credits/{id}", async (event)
             idCredit:data.id,
             date:d,
             customer:data.customerId,
-            name:data.name + data.lastName,
+            name:data.name +" "+ data.lastName,
             value:data.value,
             percentage:data.percentage,
             time: data.timeCredit,
@@ -824,6 +833,9 @@ exports.updateCreditOldSystem = onDocumentWritten("/credits/{id}", async (event)
         }
         const ref = realtimeDatabaseB.ref('credits').child(data.id);
         await ref.set(dataCredit);
+
+    }
+    
     
       
 });
