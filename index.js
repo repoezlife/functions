@@ -842,11 +842,16 @@ exports.updateCreditOldSystem = onDocumentWritten("/credits/{id}", async (event)
 
 exports.updatePayOldSystem = onDocumentWritten("/payments/{idPay}", async (event) => {
     const snapshot = event.data.after;
-    if (!snapshot) {
-        console.log("No data associated with the event");
+
+    if (!snapshot.exists) {
+        console.log("Documento eliminado");        
+        const idPay = event.params.idPay;
+        const ref = realtimeDatabaseB.ref('pays').child(idPay);
+        await ref.remove(); // Ejecuta el método remove
         return;
     }
-    const data = snapshot.data();
+    else{
+        const data = snapshot.data();
     let typePay;
 
     switch(data.type){
@@ -887,7 +892,9 @@ exports.updatePayOldSystem = onDocumentWritten("/payments/{idPay}", async (event
             zone:0
         }
         const ref = realtimeDatabaseB.ref('pays').child(data.idPay);
-        await ref.set(dataPay);         
+        await ref.set(dataPay); 
+    }   
+            
 });
 
 // Configuración de lotes
@@ -1738,12 +1745,14 @@ exports.onTaskDeleted = onDocumentDeleted("tasks/{date}/tasks/{id}", async (even
   });
 
   exports.onTaskCreated = onDocumentCreated("tasks/{date}/tasks/{id}", async (event) => {
-    const snap = event.data; // Datos del documento eliminado
-    const deletedTaskData = snap.data(); // Obtener la data del documento eliminado
+    const snap = event.data; // Datos del documento creado
+    const taskData = snap.data(); // Obtener la data del documento creado
     const date = event.params.date; // Fecha capturada del wildcard
     const taskId = event.params.id; // taskId capturado del wildcard
-    const idCredit = event.params.idCredit; // taskId capturado del wildcard    
-    const name = event.params.name; // taskId capturado del wildcard
+
+    // Acceder a los campos idCredit y name desde los datos del documento
+    const idCredit = taskData.idCredit; // Obtener idCredit del documento
+    const name = taskData.name; // Obtener name del documento
 
     const now = new Date();
     const formattedDate = now.toLocaleString('es-CO', {
@@ -1756,7 +1765,7 @@ exports.onTaskDeleted = onDocumentDeleted("tasks/{date}/tasks/{id}", async (even
         hour12: false // 24 horas
     });
   //  deletedTaskData.dateDelete=formattedDate;
-    console.log(`Task created on date: ${date} with ID: ${taskId} idCredit ${idCredit}  name  ${name}`);  
+    console.log(`Task created on date: ${date} with ID: ${taskId} idCredit ${idCredit}  name  ${name}  hora de modificación ${now}`);  
     // Aquí puedes realizar las acciones necesarias cuando una tarea es eliminada
   
     
@@ -2140,6 +2149,66 @@ exports.restartCredits = onRequest(async (request, response) => {
 
    
 });
+
+exports.paymentsDay = onRequest(async (request, response) => {
+    const date = request.query.date;
+    
+    if (!date) {
+        return response.status(400).send('No date provided');
+    }
+
+    try {
+        // Consulta en Firestore
+        const refPayments = admin.firestore().collection("payments").where("date", "==", date);
+        const snapshot = await refPayments.get();
+        
+        if (snapshot.empty) {
+            console.log('No payments found in Firestore.');
+        }
+
+        let total = 0;
+        const documentos = [];
+        
+        snapshot.forEach(doc => {
+            const data = doc.data();
+            documentos.push(data);
+            const totalPay = data.valuePay;
+            console.log(`${data.idPay}: ${totalPay}`);
+            total += totalPay; // Sumar el total
+        });
+
+        // Consulta en Realtime Database
+        const ref = realtimeDatabaseB.ref("pays");
+        const snapshotRealtime = await ref.orderByChild("date").equalTo(date).once("value");
+
+        if (!snapshotRealtime.exists()) {
+            console.log('No payments found in Realtime Database.');
+        }
+
+        const paymentList = [];
+        snapshotRealtime.forEach(childSnapshot => {
+            const payment = childSnapshot.val();
+            paymentList.push(payment); // Guardar cada pago en una lista
+        });
+
+        console.log("Payments on date in Realtime DB:", paymentList);
+
+        // Combinar resultados de Firestore y Realtime Database
+        const responseData = {
+            firestorePayments: documentos,   // Lista de documentos en Firestore
+            realtimePayments: paymentList,   // Lista de pagos en Realtime Database
+            //totalFirestore: total            // Total de pagos en Firestore
+        };
+
+        // Enviar la respuesta consolidada
+        response.status(200).json(responseData);
+
+    } catch (error) {
+        console.error('Error getting payments:', error);
+        response.status(500).send('Internal Server Error');
+    }
+});
+
 
 // Reg: Tasks Events Functions ---------------------------------------------------------
 
