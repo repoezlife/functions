@@ -1385,6 +1385,66 @@ exports.updateZoneInCreditsAndTasks = onRequest(async (request, response) => {
     }
 });
 
+exports.paymentsDay = onRequest(async (request, response) => {
+    const date = request.query.date;
+    
+    if (!date) {
+        return response.status(400).send('No date provided');
+    }
+
+    try {
+        // Consulta en Firestore
+        const refPayments = admin.firestore().collection("payments").where("date", "==", date);
+        const snapshot = await refPayments.get();
+        
+        if (snapshot.empty) {
+            console.log('No payments found in Firestore.');
+        }
+
+        let total = 0;
+        const documentos = [];
+        
+        snapshot.forEach(doc => {
+            const data = doc.data();
+            documentos.push(data);
+            const totalPay = data.valuePay;
+            console.log(`${data.idPay}: ${totalPay}`);
+            total += totalPay; // Sumar el total
+        });
+
+        // Consulta en Realtime Database
+        const ref = realtimeDatabaseB.ref("pays");
+        const snapshotRealtime = await ref.orderByChild("date").equalTo(date).once("value");
+
+        if (!snapshotRealtime.exists()) {
+            console.log('No payments found in Realtime Database.');
+        }
+
+        const paymentList = [];
+        snapshotRealtime.forEach(childSnapshot => {
+            const payment = childSnapshot.val();
+            paymentList.push(payment); // Guardar cada pago en una lista
+        });
+
+        console.log("Payments on date in Realtime DB:", paymentList);
+
+        // Combinar resultados de Firestore y Realtime Database
+        const responseData = {
+            firestorePayments: documentos,   // Lista de documentos en Firestore
+            realtimePayments: paymentList,   // Lista de pagos en Realtime Database
+            //totalFirestore: total            // Total de pagos en Firestore
+        };
+
+        // Enviar la respuesta consolidada
+        response.status(200).json(responseData);
+
+    } catch (error) {
+        console.error('Error getting payments:', error);
+        response.status(500).send('Internal Server Error');
+    }
+});
+
+
 
 /* 
 

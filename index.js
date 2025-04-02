@@ -2223,6 +2223,52 @@ exports.paymentsDay = onRequest(async (request, response) => {
     }
 });
 
+exports.creditsCapitalToPay = onRequest(async (request, response) => {
+    const date = request.query.date;   
+   
+
+    try {
+        // Consulta en Firestore
+        const refCredits = admin.firestore().collection("credits").where("creditStatus", "!=", "finished");
+        const snapshot = await refCredits.get();
+        
+        if (snapshot.empty) {
+            console.log('No payments found in Firestore.');
+        }
+
+        let total = 0;
+        const documentos = [];
+        
+        snapshot.forEach(doc => {
+            const data = doc.data();
+            documentos.push(data);
+            const totalPay = data.capitalToPay;
+            console.log(`${data.id}: ${totalPay}`);
+           if(data.creditStatus == "pending"){
+
+           }
+           else{
+            total += totalPay; // Sumar el total
+           }
+            
+        });
+
+       
+        // Combinar resultados de Firestore y Realtime Database
+        const responseData = {
+            total
+          
+            //totalFirestore: total            // Total de pagos en Firestore
+        };
+
+        // Enviar la respuesta consolidada
+        response.status(200).json(responseData);
+
+    } catch (error) {
+        console.error('Error getting payments:', error);
+        response.status(500).send('Internal Server Error');
+    }
+});
 
 // Reg: Tasks Events Functions ---------------------------------------------------------
 
