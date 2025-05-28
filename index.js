@@ -154,6 +154,9 @@ async function distTasks(date) {
                     band3=true;
                     console.log("Crédito virtual: "+f.id+"  "+f.name );
                 }
+                else if(doc.type === "visit"){
+                    console.log(`Visita: ${f.id}  ${f.name}` );
+                }
                 else{
                     idTasks.push(doc.id);
                 }
