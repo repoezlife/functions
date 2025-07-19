@@ -2055,7 +2055,7 @@ async function updateZoneCreditsTasks(customerData){
     }
 }
 
-async function updateCellCreditsTasks(idCustomer, cell, activeCredits){
+async function updateCellCreditsTasks(idCustomer, cell, customerName, activeCredits){
     console.log("Update Cell in Credits and task,  " + idCustomer + "  " + cell + "  " + activeCredits);
     
     const refCredits = admin.firestore().collection(COLLECTION_CREDITS);
@@ -2071,12 +2071,12 @@ async function updateCellCreditsTasks(idCustomer, cell, activeCredits){
                 console.log("UpdateCredit: " + dt.id + "  UpdateTask: " + dt.nextPay + "/" + dt.idTask);
 
                 const dataC = {
-                    cellphone: cell
-                    
+                    cellphone: cell,
+                    name: customerName
                 }
                 const dataT = {
-                    phone: cell
-                    
+                    phone: cell,
+                    name: customerName
                 }
                 const refT = admin.firestore().collection(COLLECTION_TASKS).doc(dt.nextPay).collection(COLLECTION_TASKS).doc(dt.idTask);
                 const refC = admin.firestore().collection(COLLECTION_CREDITS).doc(dt.id + "");                   
@@ -2694,18 +2694,45 @@ function updateZoneForCustomer(customer, polygonZones) {
  */
 exports.updateCustomer = onDocumentUpdated("/customers/{id}", async (event) => {
     console.log('actualizando customer');
+
     const customerData =event.data.after.data();
+    console.log(customerData);
     const customerDataBf =event.data.before.data();
-    
-    if (customerData.address.address1.lat != customerDataBf.address.address1.lat 
+    console.log(customerDataBf);
+
+    /* const changeCustomerAddress = customerData.address.address1.lat != customerDataBf.address.address1.lat 
         || customerData.address.address1.lon != customerDataBf.address.address1.lon 
         || customerData.address.address1.address != customerDataBf.address.address1.address
         || customerData.address.address2.address != customerDataBf.address.address2.address
         || customerData.address.address1.address != customerDataBf.address.address1.freeReference
-        || customerData.address.address2.address != customerDataBf.address.address2.freeReference
-         || customerData.zone != customerDataBf.zone
-          || customerData.name.name != customerDataBf.name.name
-           || customerData.lastName.lastName != customerDataBf.lastName.lastName) {
+        || customerData.address.address2.address != customerDataBf.address.address2.freeReference; */
+    
+    const changeCustomerAddress = customerData.address.address1.lat != customerDataBf.address.address1.lat 
+        || customerData.address.address1.lon != customerDataBf.address.address1.lon 
+        || customerData.address.address1.address != customerDataBf.address.address1.address
+        || customerData.address.address1.address != customerDataBf.address.address1.freeReference;
+    console.log('is changeCustomerAddress1: ' + changeCustomerAddress);
+    
+    if (customerData.address.address2 != null) {
+        if (customerDataBf.address.address2 == null) {
+            changeCustomerAddress = true;
+        } else {
+            changeCustomerAddress = customerData.address.address2.lat != customerDataBf.address.address2.lat 
+                || customerData.address.address2.lon != customerDataBf.address.address2.lon 
+                || customerData.address.address2.address != customerDataBf.address.address2.address
+                || customerData.address.address2.address != customerDataBf.address.address2.freeReference;
+        }
+    }
+    console.log('is changeCustomerAddress2: ' + changeCustomerAddress);
+
+    const customerZoneChanged = customerData.zone != customerDataBf.zone;
+
+    const customerNameChanged = customerData.name.name != customerDataBf.name.name
+        || customerData.name.lastName != customerDataBf.name.lastName;
+    
+    const cellChanged = customerData.cell.cell1 != customerDataBf.cell.cell1;
+    
+    if (changeCustomerAddress || customerZoneChanged || customerNameChanged) {     
         getZoneByCustomer(customerData).then(zoneCustomer => {
             console.log('Zona del customer:' + customerData.id + '::' + zoneCustomer);
             customerData.zone = zoneCustomer;
@@ -2714,10 +2741,11 @@ exports.updateCustomer = onDocumentUpdated("/customers/{id}", async (event) => {
             });
         });
     }
-    if(customerData.cell.cell1 != customerDataBf.cell.cell1)
-        {
-            updateCellCreditsTasks(customerData.id, customerData.cell.cell1, customerData.activeCredits);
-        }
+
+    if(cellChanged || customerNameChanged) {
+        let customerName = customerData.name.name + ' ' + customerData.name.lastName;
+        updateCellCreditsTasks(customerData.id, customerData.cell.cell1, customerName, customerData.activeCredits);
+    }
 });
 /**
  * Save Multiple Customers
