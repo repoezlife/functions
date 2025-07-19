@@ -2707,7 +2707,7 @@ exports.updateCustomer = onDocumentUpdated("/customers/{id}", async (event) => {
         || customerData.address.address1.address != customerDataBf.address.address1.freeReference
         || customerData.address.address2.address != customerDataBf.address.address2.freeReference; */
     
-    const changeCustomerAddress = customerData.address.address1.lat != customerDataBf.address.address1.lat 
+    let changeCustomerAddress = customerData.address.address1.lat != customerDataBf.address.address1.lat 
         || customerData.address.address1.lon != customerDataBf.address.address1.lon 
         || customerData.address.address1.address != customerDataBf.address.address1.address
         || customerData.address.address1.address != customerDataBf.address.address1.freeReference;
@@ -2725,12 +2725,12 @@ exports.updateCustomer = onDocumentUpdated("/customers/{id}", async (event) => {
     }
     console.log('is changeCustomerAddress2: ' + changeCustomerAddress);
 
-    const customerZoneChanged = customerData.zone != customerDataBf.zone;
+    let customerZoneChanged = customerData.zone != customerDataBf.zone;
 
-    const customerNameChanged = customerData.name.name != customerDataBf.name.name
+    let customerNameChanged = customerData.name.name != customerDataBf.name.name
         || customerData.name.lastName != customerDataBf.name.lastName;
     
-    const cellChanged = customerData.cell.cell1 != customerDataBf.cell.cell1;
+    let cellChanged = customerData.cell.cell1 != customerDataBf.cell.cell1;
     
     if (changeCustomerAddress || customerZoneChanged || customerNameChanged) {     
         getZoneByCustomer(customerData).then(zoneCustomer => {
