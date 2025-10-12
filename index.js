@@ -138,32 +138,29 @@ async function distTasks(date) {
     const snapshot = await refTasks.orderBy("zone", "asc").get();
 
     if (!snapshot.empty) {
-        
         snapshot.forEach(doc => {
-            const f=doc.data();
-            const dir= f.address.split(",");
-            const tipoC=dir[2];
-        //    console.log(f.address+"   "+dir[2]);
+            const taskData = doc.data();
+            const dir = taskData.address.split(",");
+            const tipoC = dir[2];
 
-            console.log(f.id + " -*- "+f.zone +"  Tipo credito: "+dir[2]);
+            console.log(taskData.id + " -*- "+ taskData.zone +"  Tipo credito: "+dir[2]);
 
-            if(f.stateTask === 'pending'){
-                if(tipoC && typeof tipoC === 'string' &&tipoC.trim().toUpperCase() === "VIRTUAL"){
-                    console.log("ingresa if virtual");
-                    idVirtualTasks.push(doc.id);
-                    band3=true;
-                    console.log("Crédito virtual: "+f.id+"  "+f.name );
-                }
-                else if(doc.type === "visit"){
-                    console.log(`Visita: ${f.id}  ${f.name}` );
-                }
-                else{
-                    
-                    idTasks.push(doc.id);
+            if(taskData.stateTask === 'pending'){
+                if (taskData.type === "visit") {
+                    console.log(`Visita: ${taskData.id}  ${taskData.name}`);
+                } else {
+                    if (tipoC && typeof tipoC === 'string' &&tipoC.trim().toUpperCase() === "VIRTUAL") {
+                        console.log("ingresa if virtual");
+                        idVirtualTasks.push(doc.id);
+                        band3 = true;
+                        console.log("Crédito virtual: " + taskData.id + "  " + taskData.name);
+                    } else {
+                        idTasks.push(taskData.id);
+                    }
                 }
             }            
-          });
-          nTasks=idTasks.length;
+        });
+        nTasks = idTasks.length;
     }
     else{
         console.log('No hay tareas para '+date);
