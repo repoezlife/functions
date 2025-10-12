@@ -158,6 +158,7 @@ async function distTasks(date) {
                     console.log(`Visita: ${f.id}  ${f.name}` );
                 }
                 else{
+                    
                     idTasks.push(doc.id);
                 }
             }            
@@ -509,7 +510,8 @@ exports.getPaymentsBydateRange = onRequest(async (req, res) => {
             }
             for (let paydoc of snapshot.docs) {
                 let payData = paydoc.data();
-                if (evaluateDate(bodyData.dateFilterIni, bodyData.dateFilterFin, payData.date)) {
+                dateToCompare = bodyData.isModified ? payData.modificationDate : payData.date;
+                if (evaluateDate(bodyData.dateFilterIni, bodyData.dateFilterFin, dateToCompare)) {
                     countReg += 1;
                     payments.push(payData);
                 }
