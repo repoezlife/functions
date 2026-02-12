@@ -11,6 +11,7 @@ const fs = require('fs');
 const Busboy = require('busboy');
 const path = require('path');
 const os = require('os');
+const axios = require("axios");
 
 // Importar correctamente desde firebase-admin/app
 const { initializeApp, cert } = require('firebase-admin/app');
@@ -3021,3 +3022,108 @@ exports.getTaskBydateRange = onRequest({ cors: true }, async (req, res) => {
         })
     }
 });
+
+exports.updateCityForAllCustomers = onRequest(
+  { cors: true, timeoutSeconds: 540 },
+  async (req, res) => {
+    try {
+
+      if (req.method !== "POST") {
+        return res.status(405).json({
+          message: "Método no permitido. Usa POST."
+        });
+      }
+
+      const snapshot = await admin.firestore().collection("customers").get();
+
+      if (snapshot.empty) {
+        return res.status(200).json({
+          message: "No hay customers"
+        });
+      }
+
+      const cityCache = {};
+      let batch = admin.firestore().batch();
+      let batchCounter = 0;
+      let apiCalls = 0;
+      let updates = 0;
+
+      for (const doc of snapshot.docs) {
+        const data = doc.data();
+
+        const address = data.address;
+        if (!address || !address.address1) continue;
+
+        const { lat, lon, city } = address.address1;
+
+        if (!lat || !lon) continue;
+
+        if (city && city.trim() !== "") continue;
+
+        const latKey = Number(lat).toFixed(5);
+        const lonKey = Number(lon).toFixed(5);
+        const cacheKey = `${latKey},${lonKey}`;
+
+        let cityName = cityCache[cacheKey];
+
+        if (!cityName) {
+          const response = await axios.get(
+            "https://maps.googleapis.com/maps/api/geocode/json",
+            {
+              params: {
+                latlng: `${latKey},${lonKey}`,
+                key: apiKey
+              }
+            }
+          );
+
+          apiCalls++;
+
+          const results = response.data.results;
+
+          if (!results || results.length === 0) continue;
+
+          const cityComponent = results
+            .flatMap(r => r.address_components)
+            .find(c => c.types.includes("locality"));
+
+          cityName = cityComponent ? cityComponent.long_name : null;
+
+          if (!cityName) continue;
+
+          cityCache[cacheKey] = cityName;
+        }
+
+        batch.update(doc.ref, {
+          "address.address1.city": cityName
+        });
+
+        updates++;
+        batchCounter++;
+
+        if (batchCounter === 500) {
+          await batch.commit();
+          batch = admin.firestore().batch();
+          batchCounter = 0;
+        }
+      }
+
+      if (batchCounter > 0) {
+        await batch.commit();
+      }
+
+      return res.status(200).json({
+        message: "Proceso finalizado",
+        totalCustomers: snapshot.size,
+        updates,
+        apiCalls
+      });
+
+    } catch (error) {
+      console.error("Error:", error);
+      return res.status(500).json({
+        message: error.message
+      });
+    }
+  }
+);
